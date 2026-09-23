@@ -1,5 +1,8 @@
 import argparse
+import base64
+import io
 import json
+from pathlib import Path
 import socket
 import threading
 
@@ -8,6 +11,7 @@ import pygame
 
 WIDTH, HEIGHT = 800, 600
 PLAYER_SIZE = 50
+PLAYER_IMAGE_PATH = Path(__file__).with_name("RaccoonBASE.png.png")
 MAX_PLAYERS = 5
 PORT = 5000
 COLORS = [(80, 190, 120), (240, 120, 90), (100, 160, 240), (230, 200, 80), (190, 110, 220)]
@@ -28,6 +32,7 @@ class GameServer:
 		self.clients = {}
 		self.inputs = {}
 		self.next_player_id = 1
+		self.player_image_data = base64.b64encode(PLAYER_IMAGE_PATH.read_bytes()).decode("ascii")
 		self.running = True
 
 	def start(self):
@@ -51,7 +56,11 @@ class GameServer:
 				self.clients[player_id] = connection
 				self.inputs[player_id] = {}
 			try:
-				send_message(connection, {"type": "welcome", "player_id": player_id})
+				send_message(connection, {
+					"type": "welcome",
+					"player_id": player_id,
+					"player_image": self.player_image_data,
+				})
 			except OSError:
 				self.remove_client(player_id, connection)
 				continue
@@ -112,6 +121,15 @@ def setup_window(title):
 	return window
 
 
+def load_player_image(image_data=None):
+	if image_data:
+		image_source = io.BytesIO(base64.b64decode(image_data))
+	else:
+		image_source = str(PLAYER_IMAGE_PATH)
+	image = pygame.image.load(image_source).convert_alpha()
+	return pygame.transform.smoothscale(image, (PLAYER_SIZE, PLAYER_SIZE))
+
+
 def keyboard_state():
 	keys = pygame.key.get_pressed()
 	return {
@@ -146,6 +164,7 @@ def host_game(port):
 	server.start()
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28) if window else None
+	player_image = load_player_image() if window else None
 	players = {0: pygame.Rect(375, 275, PLAYER_SIZE, PLAYER_SIZE)}
 	running = True
 	try:
@@ -171,7 +190,7 @@ def host_game(port):
 			if window:
 				window.fill((30, 35, 50))
 				for player_id, rect in players.items():
-					pygame.draw.rect(window, COLORS[player_id % len(COLORS)], rect)
+					window.blit(player_image, rect)
 					label = font.render(str(player_id + 1), True, (255, 255, 255))
 					window.blit(label, (rect.x + 20, rect.y + 14))
 				status = font.render(f"Players: {len(players)}/{MAX_PLAYERS} | ESC to stop", True, (220, 220, 220))
@@ -209,6 +228,7 @@ def client_game(address, port):
 	window = setup_window(f"LAN Game - Player {player_id + 1}")
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28)
+	player_image = load_player_image(welcome["player_image"])
 	try:
 		while running:
 			for event in pygame.event.get():
@@ -223,7 +243,7 @@ def client_game(address, port):
 			window.fill((30, 35, 50))
 			for raw_id, position in state.items():
 				rect = pygame.Rect(position[0], position[1], PLAYER_SIZE, PLAYER_SIZE)
-				pygame.draw.rect(window, COLORS[int(raw_id) % len(COLORS)], rect)
+				window.blit(player_image, rect)
 				label = font.render(str(int(raw_id) + 1), True, (255, 255, 255))
 				window.blit(label, (rect.x + 20, rect.y + 14))
 			status = font.render(f"Player {player_id + 1} | ESC to disconnect", True, (220, 220, 220))
