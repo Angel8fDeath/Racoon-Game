@@ -20,28 +20,33 @@ from GameUtils import (
 )
 
 
-def client_game(address, port):
+def client_game(address, port, player_name="Player"):
 	connection = socket.create_connection((address, port))
 	reader = connection.makefile("r", encoding="utf-8")
 	welcome = json.loads(reader.readline())
 	player_id = welcome["player_id"]
+	player_name = "".join(character for character in str(player_name) if character.isprintable()).strip()[:20] or "Player"
+	send_message(connection, {"type": "player_info", "name": player_name})
 	latest_state = {}
-	lobby_state = {"players": [0, player_id], "votes": {}, "selected_mode": "Survivors"}
+	latest_names = {str(player_id): player_name}
+	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors"}
 	state_lock = threading.Lock()
 	running = True
 	game_started = False
 
 	def receive_states():
-		nonlocal running, latest_state, lobby_state, game_started
+		nonlocal running, latest_state, latest_names, lobby_state, game_started
 		try:
 			for line in reader:
 				message = json.loads(line)
 				if message.get("type") == "state":
 					with state_lock:
 						latest_state = message["players"]
+						latest_names = message.get("names", latest_names)
 				elif message.get("type") == "lobby":
 					with state_lock:
 						lobby_state = message
+						latest_names = message.get("names", latest_names)
 				elif message.get("type") == "start_game":
 					game_started = True
 		except (OSError, ValueError):
@@ -86,15 +91,16 @@ def client_game(address, port):
 				running = False
 			with state_lock:
 				state = latest_state.copy()
+				names = latest_names.copy()
 			local_position = state.get(str(player_id), [WORLD_WIDTH // 2, WORLD_HEIGHT // 2])
 			camera_x, camera_y = camera_position(local_position)
 			draw_background(window, camera_x, camera_y)
 			for raw_id, position in state.items():
 				rect = pygame.Rect(position[0] - camera_x, position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
 				window.blit(player_image, rect)
-				label = font.render(str(int(raw_id) + 1), True, (255, 255, 255))
+				label = font.render(names.get(raw_id, str(int(raw_id) + 1)), True, (255, 255, 255))
 				window.blit(label, (rect.x + 20, rect.y + 14))
-			status = font.render(f"Player {player_id + 1} | ESC to disconnect", True, (220, 220, 220))
+			status = font.render(f"{player_name} | ESC to disconnect", True, (220, 220, 220))
 			window.blit(status, (15, 15))
 			pygame.display.flip()
 			clock.tick(60)

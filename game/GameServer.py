@@ -39,6 +39,9 @@ class GameServer:
 		self.player_image_data = base64.b64encode(PLAYER_IMAGE_PATH.read_bytes()).decode("ascii")
 		self.phase = "lobby"
 		self.votes = {0: MODE_OPTIONS[0]}
+		self.names = {0: "HOST"}
+		if self.virtual_player_id is not None:
+			self.names[self.virtual_player_id] = "VM RACCOON"
 		self.running = True
 
 	def start(self):
@@ -63,6 +66,7 @@ class GameServer:
 				self.clients[player_id] = connection
 				self.inputs[player_id] = {}
 				self.votes[player_id] = MODE_OPTIONS[0]
+				self.names[player_id] = f"PLAYER {player_id + 1}"
 			try:
 				send_message(connection, {
 					"type": "welcome",
@@ -79,7 +83,12 @@ class GameServer:
 		try:
 			for line in connection.makefile("r", encoding="utf-8"):
 				message = json.loads(line)
-				if message.get("type") == "lobby_action":
+				if message.get("type") == "player_info":
+					name = "".join(character for character in str(message.get("name", "")) if character.isprintable()).strip()[:20]
+					with self.lock:
+						if player_id in self.clients and name:
+							self.names[player_id] = name
+				elif message.get("type") == "lobby_action":
 					self.handle_lobby_action(player_id, message)
 				elif message.get("type") == "input":
 					with self.lock:
@@ -95,6 +104,7 @@ class GameServer:
 				self.clients.pop(player_id, None)
 				self.inputs.pop(player_id, None)
 				self.votes.pop(player_id, None)
+				self.names.pop(player_id, None)
 		try:
 			connection.close()
 		except OSError:
@@ -103,6 +113,10 @@ class GameServer:
 	def get_inputs(self):
 		with self.lock:
 			return {player_id: values.copy() for player_id, values in self.inputs.items()}
+
+	def get_player_names(self):
+		with self.lock:
+			return {str(player_id): name for player_id, name in self.names.items()}
 
 	def get_lobby_state(self):
 		with self.lock:
@@ -116,6 +130,7 @@ class GameServer:
 			return {
 				"players": players,
 				"virtual_player": self.virtual_player_id,
+				"names": {str(player_id): name for player_id, name in self.names.items()},
 				"votes": votes,
 				"selected_mode": selected_mode,
 			}
@@ -155,7 +170,7 @@ class GameServer:
 			connection.close()
 
 
-def host_game(port, debug_mode=False):
+def host_game(port, debug_mode=False, player_name="HOST"):
 	try:
 		window = setup_window(f"LAN Game Host - port {port}")
 	except RuntimeError:
@@ -163,6 +178,7 @@ def host_game(port, debug_mode=False):
 		window = None
 		print(f"Running headlessly on TCP port {port}. Connect desktop clients to this host.")
 	server = GameServer("0.0.0.0", port, debug_mode=debug_mode)
+	server.names[0] = player_name.strip()[:20] or "HOST"
 	server.start()
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28) if window else None
@@ -219,14 +235,15 @@ def host_game(port, debug_mode=False):
 				players.pop(player_id)
 
 			state = {str(player_id): [rect.x, rect.y] for player_id, rect in players.items()}
-			server.broadcast({"type": "state", "players": state})
+			server.broadcast({"type": "state", "players": state, "names": server.get_player_names()})
 			if window:
 				camera_x, camera_y = camera_position([players[0].x, players[0].y])
+				names = server.get_player_names()
 				draw_background(window, camera_x, camera_y)
 				for player_id, rect in players.items():
 					screen_rect = rect.move(-camera_x, -camera_y)
 					window.blit(player_image, screen_rect)
-					label = font.render(str(player_id + 1), True, (255, 255, 255))
+					label = font.render(names.get(str(player_id), str(player_id + 1)), True, (255, 255, 255))
 					window.blit(label, (screen_rect.x + 20, screen_rect.y + 14))
 				status = font.render(f"Players: {len(players)}/{MAX_PLAYERS} | ESC to stop", True, (220, 220, 220))
 				window.blit(status, (15, 15))
