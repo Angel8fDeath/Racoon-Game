@@ -50,10 +50,10 @@ def keyboard_state():
 	mouse_x, mouse_y = pygame.mouse.get_pos()
 	return {
 		"type": "input",
-		"left": bool(keys[pygame.K_LEFT]),
-		"right": bool(keys[pygame.K_RIGHT]),
-		"up": bool(keys[pygame.K_UP]),
-		"down": bool(keys[pygame.K_DOWN]),
+		"left": bool(keys[pygame.K_LEFT]) or bool(keys[pygame.K_a]),
+		"right": bool(keys[pygame.K_RIGHT]) or bool(keys[pygame.K_d]),
+		"up": bool(keys[pygame.K_UP]) or bool(keys[pygame.K_w]),
+		"down": bool(keys[pygame.K_DOWN]) or bool(keys[pygame.K_s]),
 		"dash": bool(keys[pygame.K_SPACE]),
 		"aim": [mouse_x - window_width // 2, mouse_y - window_height // 2],
 	}

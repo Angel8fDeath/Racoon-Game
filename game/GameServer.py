@@ -323,7 +323,7 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 						continue
 					inside_flashlight = is_inside_flashlight(chaser_center, player_rect.center, aims.get(str(chaser_id), [0, -1]))
 					progress = server.catch_progress.get(player_id, 0.0)
-					progress += 1 / 90 if inside_flashlight else -1 / 1800
+					progress += 1 / 90 if inside_flashlight else -1 / 900
 					server.catch_progress[player_id] = max(0.0, min(1.0, progress))
 					if server.catch_progress[player_id] >= 1.0:
 						server.caught_players.add(player_id)
