@@ -10,6 +10,9 @@ import pygame
 WIDTH, HEIGHT = 1200, 900
 WORLD_WIDTH, WORLD_HEIGHT = 2400, 1800
 PLAYER_SIZE = 58
+DASH_BOOST_SPEED = 700
+DASH_BOOST_DURATION = 0.45
+DASH_COOLDOWN = 3.0
 FLASHLIGHT_RADIUS = 380
 FLASHLIGHT_HALF_SPREAD = math.radians(16)
 PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "RaccoonBASE.png"
@@ -51,6 +54,7 @@ def keyboard_state():
 		"right": bool(keys[pygame.K_RIGHT]),
 		"up": bool(keys[pygame.K_UP]),
 		"down": bool(keys[pygame.K_DOWN]),
+		"dash": bool(keys[pygame.K_SPACE]),
 		"aim": [mouse_x - window_width // 2, mouse_y - window_height // 2],
 	}
 
@@ -127,6 +131,16 @@ def draw_catch_indicator(window, center, progress):
 	pygame.draw.circle(window, (255, 184, 120), center, radius, 2)
 
 
+def draw_stamina_bar(window, rect, remaining, maximum=DASH_COOLDOWN):
+	ratio = max(0.0, min(1.0, remaining / maximum if maximum else 0.0))
+	bar = pygame.Rect(rect.x, rect.bottom + 5, rect.width, 6)
+	pygame.draw.rect(window, (8, 10, 12), bar)
+	pygame.draw.rect(window, (92, 124, 84), bar, 1)
+	if ratio > 0:
+		fill = pygame.Rect(bar.x + 1, bar.y + 1, round((bar.width - 2) * ratio), bar.height - 2)
+		pygame.draw.rect(window, (151, 205, 116), fill)
+
+
 def move_player(rect, controls):
 	if controls.get("left"):
 		rect.x -= 5
@@ -137,3 +151,24 @@ def move_player(rect, controls):
 	if controls.get("down"):
 		rect.y += 5
 	rect.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
+
+
+def dash_direction(controls):
+	direction_x = int(controls.get("right", False)) - int(controls.get("left", False))
+	direction_y = int(controls.get("down", False)) - int(controls.get("up", False))
+	if direction_x == 0 and direction_y == 0:
+		direction_x, direction_y = controls.get("aim", [0, -1])
+	length = math.hypot(direction_x, direction_y)
+	if length < 0.1:
+		return None
+	return direction_x / length, direction_y / length
+
+
+def apply_dash_boost(rect, boost, elapsed):
+	ratio = max(0.0, min(1.0, boost["remaining"] / DASH_BOOST_DURATION))
+	direction_x, direction_y = boost["direction"]
+	rect.x += round(direction_x * DASH_BOOST_SPEED * ratio * elapsed)
+	rect.y += round(direction_y * DASH_BOOST_SPEED * ratio * elapsed)
+	rect.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
+	boost["remaining"] -= elapsed
+	return boost["remaining"] > 0

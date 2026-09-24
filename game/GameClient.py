@@ -1,6 +1,7 @@
 import json
 import socket
 import threading
+import time
 
 import pygame
 
@@ -15,6 +16,8 @@ from GameUtils import (
 	draw_background,
 	draw_flashlight,
 	draw_catch_indicator,
+	draw_stamina_bar,
+	DASH_COOLDOWN,
 	keyboard_state,
 	load_player_image,
 	send_message,
@@ -33,14 +36,16 @@ def client_game(address, port, player_name="Player"):
 	latest_names = {str(player_id): player_name}
 	latest_aims = {}
 	latest_catch_progress = {}
+	dash_stamina = {}
 	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors", "chaser_id": None}
 	state_lock = threading.Lock()
 	running = True
 	game_started = False
 	game_chaser_id = None
+	last_stamina_update = time.monotonic()
 
 	def receive_states():
-		nonlocal running, latest_state, latest_names, latest_aims, latest_catch_progress, lobby_state, game_started, game_chaser_id
+		nonlocal running, latest_state, latest_names, latest_aims, latest_catch_progress, lobby_state, game_started, game_chaser_id, dash_stamina
 		try:
 			for line in reader:
 				message = json.loads(line)
@@ -58,6 +63,9 @@ def client_game(address, port, player_name="Player"):
 				elif message.get("type") == "start_game":
 					game_chaser_id = message.get("chaser_id")
 					game_started = True
+				elif message.get("type") == "dash_success":
+					with state_lock:
+						dash_stamina[str(message.get("player_id"))] = 0.0
 		except (OSError, ValueError):
 			running = False
 
@@ -98,11 +106,17 @@ def client_game(address, port, player_name="Player"):
 				send_message(connection, keyboard_state())
 			except OSError:
 				running = False
+			now = time.monotonic()
+			stamina_elapsed = min(0.2, now - last_stamina_update)
+			last_stamina_update = now
 			with state_lock:
 				state = latest_state.copy()
 				names = latest_names.copy()
 				aims = latest_aims.copy()
 				catch_progress = latest_catch_progress.copy()
+				for player_id in list(dash_stamina):
+					dash_stamina[player_id] = min(DASH_COOLDOWN, dash_stamina[player_id] + stamina_elapsed)
+				stamina = dash_stamina.copy()
 			local_position = state.get(str(player_id), [WORLD_WIDTH // 2, WORLD_HEIGHT // 2])
 			camera_x, camera_y = camera_position(local_position)
 			draw_background(window, camera_x, camera_y)
@@ -118,6 +132,8 @@ def client_game(address, port, player_name="Player"):
 				window.blit(label, (rect.x + 20, rect.y + 14))
 				if int(raw_id) != game_chaser_id and game_chaser_id is not None:
 					draw_catch_indicator(window, (rect.centerx, rect.top - 16), float(catch_progress.get(raw_id, 0.0)))
+				if int(raw_id) != game_chaser_id:
+					draw_stamina_bar(window, rect, stamina.get(raw_id, DASH_COOLDOWN))
 			status = font.render(f"{player_name} | ESC to disconnect", True, (220, 220, 220))
 			window.blit(status, (15, 15))
 			pygame.display.flip()
