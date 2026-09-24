@@ -31,6 +31,7 @@ class LobbyView:
 		self.roster_rects = []
 		self.roster_players = []
 		self.start_rect = pygame.Rect(0, 0, 0, 0)
+		self.menu_rect = pygame.Rect(0, 0, 0, 0)
 		self.current_mode = MODE_OPTIONS[0]
 		self._update_layout(pygame.display.get_surface())
 
@@ -49,6 +50,7 @@ class LobbyView:
 		self.skin_rects = [self._rect(610, 172 + index * 82, 155, 66) for index in range(len(SKIN_OPTIONS))]
 		self.roster_rects = [self._rect(50, 194 + index * 55, 158, 40) for index in range(5)]
 		self.start_rect = self._rect(250, 488, 330, 54)
+		self.menu_rect = self._rect(610, 488, 155, 54)
 
 	def _rect(self, x, y, width, height):
 		return pygame.Rect(
@@ -77,6 +79,8 @@ class LobbyView:
 					return ("select_chaser", self.roster_players[index])
 		if self.is_host and self.start_rect.collidepoint(mouse_pos):
 			return "start_game"
+		if self.menu_rect.collidepoint(mouse_pos):
+			return "menu"
 		return None
 
 	def draw(self, screen, lobby_state):
@@ -100,9 +104,9 @@ class LobbyView:
 	def _draw_header(self, screen, lobby_state):
 		accent = self._rect(34, 35, 7, 54)
 		pygame.draw.rect(screen, RED_BRIGHT, accent)
-		title = self.title_font.render("DROP POD // LOBBY", True, TEXT)
+		title = self.title_font.render("LOBBY", True, TEXT)
 		screen.blit(title, self._pos(57, 34))
-		subtitle = self.small_font.render("ASSEMBLE YOUR SQUAD BEFORE THE RAIN BEGINS", True, AMBER)
+		subtitle = self.small_font.render("ASSEMBLE YOUR RACCOON SQUAD", True, AMBER)
 		screen.blit(subtitle, self._pos(59, 73))
 		count = len(lobby_state.get("players", []))
 		count_text = self.body_font.render(f"{count}/5 OPERATORS READY", True, TEXT)
@@ -170,8 +174,11 @@ class LobbyView:
 		else:
 			label = self.body_font.render("WAITING FOR HOST TO DEPLOY...", True, AMBER)
 			screen.blit(label, self._pos(250, 506))
+		self._panel(screen, self.menu_rect)
+		menu_label = self.small_font.render("RETURN TO MENU", True, TEXT)
+		screen.blit(menu_label, (self.menu_rect.centerx - menu_label.get_width() // 2, self.menu_rect.centery - menu_label.get_height() // 2))
 		selected = lobby_state.get("selected_mode", MODE_OPTIONS[0])
-		status = self.small_font.render(f"CURRENT PLAYMODE: {selected.upper()}  //  VOTE TO CHANGE THE DROP", True, MUTED)
+		status = self.small_font.render(f"CURRENT PLAYMODE: {selected.upper()}  //  VOTE TO CHANGE THE PLAYMODE", True, MUTED)
 		screen.blit(status, self._pos(34, 552))
 		chaser_id = lobby_state.get("chaser_id")
 		if selected == "Chase" and chaser_id is not None:

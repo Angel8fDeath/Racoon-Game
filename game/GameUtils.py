@@ -1,15 +1,22 @@
 import base64
+import heapq
 import io
 import json
 import math
+import random
 from pathlib import Path
 
 import pygame
 
 
 WIDTH, HEIGHT = 1200, 900
-WORLD_WIDTH, WORLD_HEIGHT = 2400, 1800
+WORLD_WIDTH, WORLD_HEIGHT = 4800, 3600
 PLAYER_SIZE = 58
+NEST_RECT = pygame.Rect(180, WORLD_HEIGHT // 2 - 240, 420, 480)
+FOOD_ZONE_RECTS = [
+	pygame.Rect(WORLD_WIDTH - 620, 260 + index * 650, 360, 300)
+	for index in range(5)
+]
 DASH_BOOST_SPEED = 700
 DASH_BOOST_DURATION = 0.45
 DASH_COOLDOWN = 3.0
@@ -18,6 +25,81 @@ FLASHLIGHT_HALF_SPREAD = math.radians(16)
 PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "RaccoonBASE.png"
 MAX_PLAYERS = 5
 PORT = 5000
+
+
+def generate_obstacles(seed, count=24):
+	randomizer = random.Random(seed)
+	reserved = [
+		NEST_RECT.inflate(260, 260),
+		pygame.Rect(0, WORLD_HEIGHT // 2 - 260, 1050, 520),
+		pygame.Rect(WORLD_WIDTH - 1050, WORLD_HEIGHT // 2 - 300, 1050, 600),
+	]
+	reserved.extend(zone.inflate(100, 100) for zone in FOOD_ZONE_RECTS)
+	obstacles = []
+	for _ in range(count * 12):
+		if len(obstacles) >= count:
+			break
+		width = randomizer.randrange(130, 321, 20)
+		height = randomizer.randrange(110, 281, 20)
+		candidate = pygame.Rect(
+			randomizer.randrange(700, WORLD_WIDTH - width - 700, 80),
+			randomizer.randrange(220, WORLD_HEIGHT - height - 220, 80),
+			width,
+			height,
+		)
+		if any(candidate.colliderect(area) for area in reserved):
+			continue
+		if any(candidate.inflate(120, 120).colliderect(obstacle) for obstacle in obstacles):
+			continue
+		obstacles.append([candidate.x, candidate.y, candidate.width, candidate.height])
+	return obstacles
+
+
+def find_path(start_position, goal_position, obstacles, grid_size=120):
+	columns = max(1, WORLD_WIDTH // grid_size)
+	rows = max(1, WORLD_HEIGHT // grid_size)
+	blocked = set()
+	for column in range(columns):
+		for row in range(rows):
+			cell = pygame.Rect(column * grid_size + 8, row * grid_size + 8, grid_size - 16, grid_size - 16)
+			if any(cell.colliderect(pygame.Rect(obstacle).inflate(PLAYER_SIZE, PLAYER_SIZE)) for obstacle in obstacles):
+				blocked.add((column, row))
+
+	def to_cell(position):
+		return (
+			max(0, min(columns - 1, int(position[0] // grid_size))),
+			max(0, min(rows - 1, int(position[1] // grid_size))),
+		)
+
+	start = to_cell(start_position)
+	goal = to_cell(goal_position)
+	blocked.discard(start)
+	blocked.discard(goal)
+	frontier = [(0, start)]
+	came_from = {start: None}
+	cost_so_far = {start: 0}
+	while frontier:
+		_, current = heapq.heappop(frontier)
+		if current == goal:
+			break
+		for delta_x, delta_y in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+			next_cell = current[0] + delta_x, current[1] + delta_y
+			if not (0 <= next_cell[0] < columns and 0 <= next_cell[1] < rows) or next_cell in blocked:
+				continue
+			new_cost = cost_so_far[current] + 1
+			if next_cell not in cost_so_far or new_cost < cost_so_far[next_cell]:
+				cost_so_far[next_cell] = new_cost
+				heuristic = abs(goal[0] - next_cell[0]) + abs(goal[1] - next_cell[1])
+				heapq.heappush(frontier, (new_cost + heuristic, next_cell))
+				came_from[next_cell] = current
+	if goal not in came_from:
+		return []
+	path = []
+	current = goal
+	while current is not None:
+		path.append((current[0] * grid_size + grid_size // 2, current[1] * grid_size + grid_size // 2))
+		current = came_from[current]
+	return list(reversed(path))
 
 
 def send_message(connection, message):
@@ -55,6 +137,7 @@ def keyboard_state():
 		"up": bool(keys[pygame.K_UP]) or bool(keys[pygame.K_w]),
 		"down": bool(keys[pygame.K_DOWN]) or bool(keys[pygame.K_s]),
 		"dash": bool(keys[pygame.K_SPACE]),
+		"interact": bool(keys[pygame.K_e]),
 		"aim": [mouse_x - window_width // 2, mouse_y - window_height // 2],
 	}
 
@@ -80,6 +163,69 @@ def draw_background(window, camera_x, camera_y):
 			color = (25, 36, 29) if (world_x // tile_size + world_y // tile_size) % 2 else (20, 28, 24)
 			pygame.draw.rect(window, color, (screen_x, screen_y, tile_size, tile_size))
 	pygame.draw.line(window, (48, 66, 45), (0, 0), (window_width, 0), 2)
+
+
+def draw_obstacles(window, camera_x, camera_y, obstacles):
+	for raw_obstacle in obstacles:
+		obstacle = pygame.Rect(raw_obstacle).move(-camera_x, -camera_y)
+		pygame.draw.rect(window, (10, 14, 12), obstacle.inflate(14, 14), border_radius=10)
+		pygame.draw.rect(window, (48, 58, 49), obstacle, border_radius=8)
+		pygame.draw.rect(window, (79, 91, 72), obstacle.inflate(-12, -12), 3, border_radius=6)
+		pygame.draw.line(window, (104, 111, 83), obstacle.topleft, obstacle.bottomright, 3)
+
+
+def draw_food_zones(window, camera_x, camera_y, delivered_food):
+	for index, zone in enumerate(FOOD_ZONE_RECTS):
+		rect = zone.move(-camera_x, -camera_y)
+		color = (191, 143, 62) if index in delivered_food else (92, 124, 84)
+		pygame.draw.rect(window, (12, 18, 14), rect.inflate(12, 12))
+		for offset_x, offset_y, radius, shade in ((70, 100, 42, (61, 67, 59)), (150, 170, 52, (84, 74, 56)), (250, 95, 46, (50, 58, 53)), (205, 235, 36, (116, 83, 57))):
+			pygame.draw.circle(window, shade, (rect.x + offset_x, rect.y + offset_y), radius)
+		pygame.draw.rect(window, (24, 29, 25), (rect.x + 92, rect.y + 55, 88, 54), border_radius=12)
+		pygame.draw.rect(window, color, rect, 4)
+		pygame.draw.circle(window, color, rect.center, 22, 3)
+		label = pygame.font.Font(None, 26).render("FOOD ZONE", True, (241, 235, 220))
+		window.blit(label, (rect.centerx - label.get_width() // 2, rect.y + 12))
+
+
+def draw_nest(window, camera_x, camera_y, food_count=0):
+	rect = NEST_RECT.move(-camera_x, -camera_y)
+	pygame.draw.rect(window, (12, 18, 14), rect.inflate(12, 12))
+	body = pygame.Rect(rect.x + 34, rect.y + 60, rect.width - 68, rect.height - 82)
+	lid = pygame.Rect(rect.x + 15, rect.y + 34, rect.width - 30, 42)
+	pygame.draw.rect(window, (74, 91, 78), body, border_radius=8)
+	pygame.draw.rect(window, (112, 128, 101), lid, border_radius=6)
+	pygame.draw.line(window, (35, 47, 39), lid.midleft, lid.midright, 6)
+	pygame.draw.circle(window, (35, 47, 39), (body.x + 55, body.bottom + 8), 18)
+	pygame.draw.circle(window, (35, 47, 39), (body.right - 55, body.bottom + 8), 18)
+	label = pygame.font.Font(None, 34).render("NEST", True, (241, 235, 220))
+	window.blit(label, (body.centerx - label.get_width() // 2, body.y + 42))
+	counter = pygame.font.Font(None, 30).render(f"FOOD: {food_count}", True, (255, 220, 145))
+	window.blit(counter, (body.centerx - counter.get_width() // 2, body.y + 92))
+
+
+def draw_food_counter(window, rect, count):
+	bar_y = rect.bottom + 5
+	counter_rect = pygame.Rect(rect.right + 10, bar_y - 7, 112, 20)
+	pygame.draw.rect(window, (8, 10, 12), counter_rect)
+	pygame.draw.rect(window, (191, 143, 62), counter_rect, 1)
+	text = pygame.font.Font(None, 22).render(f"FOOD {count}/3", True, (255, 220, 145))
+	window.blit(text, (counter_rect.x + 6, counter_rect.y + 2))
+
+
+def draw_food_action(window, center, action, feedback=None):
+	if action:
+		progress = max(0.0, min(1.0, action.get("progress", 0.0)))
+		radius = PLAYER_SIZE // 2 + 12
+		circle_rect = pygame.Rect(center[0] - radius, center[1] - radius, radius * 2, radius * 2)
+		pygame.draw.circle(window, (12, 14, 16), center, radius + 4)
+		pygame.draw.arc(window, (255, 220, 145), circle_rect, -math.pi / 2, -math.pi / 2 + math.tau * progress, 5)
+		label = "COLLECTING" if action.get("type") == "collect" else "DEPOSITING"
+		text = pygame.font.Font(None, 22).render(label, True, (255, 220, 145))
+		window.blit(text, (center[0] - text.get_width() // 2, center[1] - radius - 25))
+	elif feedback:
+		text = pygame.font.Font(None, 22).render(feedback, True, (151, 205, 116))
+		window.blit(text, (center[0] - text.get_width() // 2, center[1] - PLAYER_SIZE // 2 - 25))
 
 
 def draw_flashlight(window, origin, aim_vector):
@@ -141,16 +287,30 @@ def draw_stamina_bar(window, rect, remaining, maximum=DASH_COOLDOWN):
 		pygame.draw.rect(window, (151, 205, 116), fill)
 
 
-def move_player(rect, controls):
-	if controls.get("left"):
-		rect.x -= 5
-	if controls.get("right"):
-		rect.x += 5
-	if controls.get("up"):
-		rect.y -= 5
-	if controls.get("down"):
-		rect.y += 5
+def move_rect(rect, delta_x, delta_y, obstacles):
+	rect.x += delta_x
+	for obstacle in obstacles:
+		obstacle_rect = pygame.Rect(obstacle)
+		if rect.colliderect(obstacle_rect):
+			if delta_x > 0:
+				rect.right = obstacle_rect.left
+			elif delta_x < 0:
+				rect.left = obstacle_rect.right
+	rect.y += delta_y
+	for obstacle in obstacles:
+		obstacle_rect = pygame.Rect(obstacle)
+		if rect.colliderect(obstacle_rect):
+			if delta_y > 0:
+				rect.bottom = obstacle_rect.top
+			elif delta_y < 0:
+				rect.top = obstacle_rect.bottom
 	rect.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
+
+
+def move_player(rect, controls, obstacles=()):
+	delta_x = 5 * (int(bool(controls.get("right"))) - int(bool(controls.get("left"))))
+	delta_y = 5 * (int(bool(controls.get("down"))) - int(bool(controls.get("up"))))
+	move_rect(rect, delta_x, delta_y, obstacles)
 
 
 def dash_direction(controls):
@@ -164,11 +324,9 @@ def dash_direction(controls):
 	return direction_x / length, direction_y / length
 
 
-def apply_dash_boost(rect, boost, elapsed):
+def apply_dash_boost(rect, boost, elapsed, obstacles=()):
 	ratio = max(0.0, min(1.0, boost["remaining"] / DASH_BOOST_DURATION))
 	direction_x, direction_y = boost["direction"]
-	rect.x += round(direction_x * DASH_BOOST_SPEED * ratio * elapsed)
-	rect.y += round(direction_y * DASH_BOOST_SPEED * ratio * elapsed)
-	rect.clamp_ip(pygame.Rect(0, 0, WORLD_WIDTH, WORLD_HEIGHT))
+	move_rect(rect, round(direction_x * DASH_BOOST_SPEED * ratio * elapsed), round(direction_y * DASH_BOOST_SPEED * ratio * elapsed), obstacles)
 	boost["remaining"] -= elapsed
 	return boost["remaining"] > 0

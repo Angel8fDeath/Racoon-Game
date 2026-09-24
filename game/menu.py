@@ -52,7 +52,7 @@ def launch_host(port_value, debug_mode=False, player_name="HOST"):
 		port = int(port_value or 5000)
 	except ValueError:
 		raise ValueError("Port must be a number.")
-	host_game(port, debug_mode=debug_mode, player_name=player_name)
+	return host_game(port, debug_mode=debug_mode, player_name=player_name)
 
 
 def launch_join(ip_value, port_value, player_name="Player"):
@@ -61,10 +61,10 @@ def launch_join(ip_value, port_value, player_name="Player"):
 	except ValueError:
 		raise ValueError("Port must be a number.")
 	address = ip_value.strip() or "127.0.0.1"
-	client_game(address, port, player_name=player_name)
+	return client_game(address, port, player_name=player_name)
 
 
-def run_start_menu_window():
+def _run_start_menu_window():
 	pygame.init()
 	screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 	pygame.display.set_caption("Racoon Game")
@@ -108,10 +108,12 @@ def run_start_menu_window():
 					try:
 						if mode == "host":
 							pygame.quit()
-							launch_host(port_text, debug_mode, name_text)
+							result = launch_host(port_text, debug_mode, name_text)
 						else:
 							pygame.quit()
-							launch_join(ip_text, port_text, name_text)
+							result = launch_join(ip_text, port_text, name_text)
+						if result == "menu":
+							return "menu"
 						return
 					except ValueError as exc:
 						status_text = str(exc)
@@ -147,9 +149,11 @@ def run_start_menu_window():
 					try:
 						pygame.quit()
 						if mode == "host":
-							launch_host(port_text, debug_mode, name_text)
+							result = launch_host(port_text, debug_mode, name_text)
 						else:
-							launch_join(ip_text, port_text, name_text)
+							result = launch_join(ip_text, port_text, name_text)
+						if result == "menu":
+							return "menu"
 						return
 					except ValueError as exc:
 						status_text = str(exc)
@@ -157,7 +161,7 @@ def run_start_menu_window():
 		screen.fill(BACKGROUND)
 		draw_background_details(screen)
 		pygame.draw.rect(screen, RED_BRIGHT, (51, 53, 11, 81))
-		title = title_font.render("DROP POD // RACCOON GAME", True, TEXT)
+		title = title_font.render("RACCOON GAME", True, TEXT)
 		screen.blit(title, (86, 51))
 		subtitle = small_font.render("CHOOSE YOUR DEPLOYMENT CHANNEL", True, AMBER)
 		screen.blit(subtitle, (89, 110))
@@ -182,3 +186,8 @@ def run_start_menu_window():
 
 		pygame.display.flip()
 		clock.tick(60)
+
+
+def run_start_menu_window():
+	while _run_start_menu_window() == "menu":
+		pass
