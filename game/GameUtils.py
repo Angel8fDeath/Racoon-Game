@@ -113,6 +113,8 @@ def is_inside_flashlight(origin, target, aim_vector):
 
 def draw_catch_indicator(window, center, progress):
 	progress = max(0.0, min(1.0, progress))
+	if progress == 0:
+		return
 	radius = max(10, round(PLAYER_SIZE * 0.24))
 	pygame.draw.circle(window, (12, 14, 16), center, radius + 3)
 	pygame.draw.circle(window, (104, 42, 42), center, radius, 2)
