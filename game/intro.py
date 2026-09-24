@@ -2,8 +2,8 @@
 from pathlib import Path
 import random
 
-SOUND_DIR = Path(__file__).resolve().parent / "sounds"
-ASSET_DIR = Path(__file__).resolve().parent / "images"
+ASSET_DIR = Path(__file__).resolve().parent.parent / "images"
+SOUND_DIR = ASSET_DIR
 
 WIDTH = 1200
 HEIGHT = 900
@@ -25,15 +25,20 @@ def run_intro(window):
 
     start_time = pygame.time.get_ticks()
     sound_played = False
-    show_button = False
     running = True
 
     while running:
+        elapsed = (pygame.time.get_ticks() - start_time) / 1000
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                running = False
+                return False
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                return False
+            if elapsed >= 10 and event.type == pygame.KEYDOWN and event.key in (pygame.K_RETURN, pygame.K_SPACE):
+                return True
+            if elapsed >= 10 and event.type == pygame.MOUSEBUTTONDOWN and pygame.Rect(500, 700, 200, 70).collidepoint(event.pos):
+                return True
 
-        elapsed = (pygame.time.get_ticks() - start_time) / 1000
         window.fill((30, 35, 50))
 
         if elapsed >= 2 and not sound_played:
@@ -64,8 +69,10 @@ def run_intro(window):
         window.blit(darkness, (0, 0))
 
         if elapsed >= 10:
-            pygame.draw.rect(window, (80, 80, 80), (500, 700, 200, 70))
-            window.blit(font.render("PLAY", True, (255, 255, 255)), (550, 715))
+            continue_rect = pygame.Rect(500, 700, 200, 70)
+            pygame.draw.rect(window, (80, 80, 80), continue_rect)
+            pygame.draw.rect(window, (220, 220, 220), continue_rect, 2)
+            window.blit(font.render("CONTINUE", True, (255, 255, 255)), (520, 715))
 
         pygame.display.flip()
         clock.tick(60)
