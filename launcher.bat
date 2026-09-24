@@ -33,32 +33,8 @@ REM ------------------------------------------
 REM Update the game
 REM ------------------------------------------
 
-echo Checking for game updates...
-echo.
-
-git fetch origin
-
+call :update_game
 if errorlevel 1 (
-    echo.
-    echo ERROR: Could not contact GitHub.
-    echo The game cannot verify that this computer has the latest version.
-    echo Please check the internet connection and try again.
-    echo.
-    pause
-    exit /b 1
-)
-
-echo Updating game files...
-
-git pull --ff-only origin main
-
-if errorlevel 1 (
-    echo.
-    echo ERROR: Game update failed.
-    echo.
-    echo This may mean the local copy has been modified.
-    echo Please contact the game developer.
-    echo.
     pause
     exit /b 1
 )
@@ -217,4 +193,59 @@ if exist "%LocalAppData%\Programs\Python\Python313\python.exe" set "PATH=%LocalA
 for /d %%D in ("%LocalAppData%\Programs\Python\Python3*") do (
     if exist "%%~fD\python.exe" set "PATH=%%~fD;%%~fD\Scripts;%PATH%"
 )
+exit /b 0
+
+:update_game
+echo Checking for game updates...
+git fetch origin
+if errorlevel 1 (
+    echo.
+    echo ERROR: Could not contact GitHub.
+    echo The game cannot verify that this computer has the latest version.
+    echo Please check the internet connection and try again.
+    exit /b 1
+)
+
+git diff --quiet
+if errorlevel 1 (
+    echo.
+    echo Local uncommitted changes were found.
+    choice /C YN /N /M "Discard them and let GitHub override this copy? [Y/N] "
+    if errorlevel 2 (
+        echo Keeping local changes.
+    ) else (
+        git reset --hard HEAD
+        if errorlevel 1 exit /b 1
+    )
+)
+
+git diff --cached --quiet
+if errorlevel 1 (
+    echo.
+    echo Local staged changes were found.
+    choice /C YN /N /M "Discard staged changes and continue? [Y/N] "
+    if errorlevel 2 (
+        echo Keeping staged changes.
+    ) else (
+        git reset --hard HEAD
+        if errorlevel 1 exit /b 1
+    )
+)
+
+echo Updating game files...
+git pull --ff-only origin main
+if not errorlevel 1 exit /b 0
+
+echo.
+echo The normal update still failed.
+choice /C YN /N /M "Hard reset this copy to origin/main? [Y/N] "
+if errorlevel 2 (
+    echo Update cancelled. Local files were not reset.
+    exit /b 1
+)
+
+git fetch origin
+if errorlevel 1 exit /b 1
+git reset --hard origin/main
+if errorlevel 1 exit /b 1
 exit /b 0

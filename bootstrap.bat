@@ -23,21 +23,8 @@ echo          Updating Racoon Game
 echo ==========================================
 echo.
 
-echo Checking for game updates...
-git fetch origin
+call :update_game
 if errorlevel 1 (
-    echo.
-    echo ERROR: Could not contact GitHub.
-    echo Check the internet connection and try again.
-    pause
-    exit /b 1
-)
-
-git pull --ff-only origin main
-if errorlevel 1 (
-    echo.
-    echo ERROR: Game update failed.
-    echo The local copy may contain uncommitted changes.
     pause
     exit /b 1
 )
@@ -80,4 +67,58 @@ exit /b 0
 
 :refresh_tool_paths
 if exist "%ProgramFiles%\Git\cmd\git.exe" set "PATH=%ProgramFiles%\Git\cmd;%PATH%"
+exit /b 0
+
+:update_game
+echo Checking for game updates...
+git fetch origin
+if errorlevel 1 (
+    echo.
+    echo ERROR: Could not contact GitHub.
+    echo Check the internet connection and try again.
+    exit /b 1
+)
+
+git diff --quiet
+if errorlevel 1 (
+    echo.
+    echo Local uncommitted changes were found.
+    choice /C YN /N /M "Discard them and let GitHub override this copy? [Y/N] "
+    if errorlevel 2 (
+        echo Keeping local changes.
+    ) else (
+        git reset --hard HEAD
+        if errorlevel 1 exit /b 1
+    )
+)
+
+git diff --cached --quiet
+if errorlevel 1 (
+    echo.
+    echo Local staged changes were found.
+    choice /C YN /N /M "Discard staged changes and continue? [Y/N] "
+    if errorlevel 2 (
+        echo Keeping staged changes.
+    ) else (
+        git reset --hard HEAD
+        if errorlevel 1 exit /b 1
+    )
+)
+
+echo Updating game files...
+git pull --ff-only origin main
+if not errorlevel 1 exit /b 0
+
+echo.
+echo The normal update still failed.
+choice /C YN /N /M "Hard reset this copy to origin/main? [Y/N] "
+if errorlevel 2 (
+    echo Update cancelled. Local files were not reset.
+    exit /b 1
+)
+
+git fetch origin
+if errorlevel 1 exit /b 1
+git reset --hard origin/main
+if errorlevel 1 exit /b 1
 exit /b 0
