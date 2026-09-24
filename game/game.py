@@ -11,7 +11,7 @@ import pygame
 
 WIDTH, HEIGHT = 800, 600
 PLAYER_SIZE = 50
-PLAYER_IMAGE_PATH = Path(__file__).with_name("RaccoonBASE.png.png")
+PLAYER_IMAGE_PATH = Path(__file__).with_name("RaccoonBASE.png")
 MAX_PLAYERS = 5
 PORT = 5000
 COLORS = [(80, 190, 120), (240, 120, 90), (100, 160, 240), (230, 200, 80), (190, 110, 220)]
