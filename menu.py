@@ -1,182 +1,251 @@
 import argparse
+import json
+import socket
+import threading
 
 import pygame
 
-from game import client_game, host_game
+
+WIDTH, HEIGHT = 800, 600
+PLAYER_SIZE = 50
+MAX_PLAYERS = 5
+PORT = 5000
+COLORS = [(80, 190, 120), (240, 120, 90), (100, 160, 240), (230, 200, 80), (190, 110, 220)]
 
 
-WINDOW_WIDTH, WINDOW_HEIGHT = 900, 600
-BG_COLOR = (18, 22, 30)
-PANEL_COLOR = (33, 40, 54)
-BUTTON_COLOR = (84, 148, 255)
-BUTTON_ALT = (100, 175, 120)
-TEXT_COLOR = (240, 240, 240)
-SUBTEXT_COLOR = (170, 180, 200)
-BORDER_COLOR = (100, 120, 150)
-ERROR_COLOR = (255, 110, 110)
+def send_message(connection, message):
+	connection.sendall((json.dumps(message) + "\n").encode("utf-8"))
 
 
-def input_box(screen, font, rect, label, text, active):
-	pygame.draw.rect(screen, (18, 27, 40) if active else PANEL_COLOR, rect, border_radius=10)
-	pygame.draw.rect(screen, BORDER_COLOR if active else (70, 82, 100), rect, 2, border_radius=10)
-	label_surface = font.render(label, True, SUBTEXT_COLOR)
-	screen.blit(label_surface, (rect.x, rect.y - 26))
-	text_surface = font.render(text, True, TEXT_COLOR)
-	screen.blit(text_surface, (rect.x + 14, rect.y + 12))
+class GameServer:
+	def __init__(self, host, port):
+		self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+		self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		self.listener.bind((host, port))
+		self.listener.listen(MAX_PLAYERS - 1)
+		self.listener.settimeout(0.5)
+		self.lock = threading.Lock()
+		self.clients = {}
+		self.inputs = {}
+		self.next_player_id = 1
+		self.running = True
+
+	def start(self):
+		threading.Thread(target=self.accept_clients, daemon=True).start()
+
+	def accept_clients(self):
+		while self.running:
+			try:
+				connection, _ = self.listener.accept()
+			except socket.timeout:
+				continue
+			except OSError:
+				break
+
+			with self.lock:
+				if len(self.clients) >= MAX_PLAYERS - 1:
+					connection.close()
+					continue
+				player_id = self.next_player_id
+				self.next_player_id += 1
+				self.clients[player_id] = connection
+				self.inputs[player_id] = {}
+			try:
+				send_message(connection, {"type": "welcome", "player_id": player_id})
+			except OSError:
+				self.remove_client(player_id, connection)
+				continue
+			threading.Thread(target=self.read_client, args=(player_id, connection), daemon=True).start()
+
+	def read_client(self, player_id, connection):
+		try:
+			for line in connection.makefile("r", encoding="utf-8"):
+				message = json.loads(line)
+				if message.get("type") == "input":
+					with self.lock:
+						self.inputs[player_id] = message
+		except (OSError, ValueError):
+			pass
+		finally:
+			self.remove_client(player_id, connection)
+
+	def remove_client(self, player_id, connection):
+		with self.lock:
+			if self.clients.get(player_id) is connection:
+				self.clients.pop(player_id, None)
+				self.inputs.pop(player_id, None)
+		try:
+			connection.close()
+		except OSError:
+			pass
+
+	def get_inputs(self):
+		with self.lock:
+			return {player_id: values.copy() for player_id, values in self.inputs.items()}
+
+	def broadcast(self, message):
+		with self.lock:
+			clients = list(self.clients.items())
+		for player_id, connection in clients:
+			try:
+				send_message(connection, message)
+			except OSError:
+				self.remove_client(player_id, connection)
+
+	def close(self):
+		self.running = False
+		self.listener.close()
+		with self.lock:
+			clients = list(self.clients.values())
+		self.clients.clear()
+		for connection in clients:
+			connection.close()
 
 
-def draw_button(screen, font, rect, label, selected=False):
-	color = BUTTON_ALT if selected else BUTTON_COLOR
-	pygame.draw.rect(screen, color, rect, border_radius=12)
-	pygame.draw.rect(screen, (255, 255, 255), rect, 2, border_radius=12)
-	text_surface = font.render(label, True, TEXT_COLOR)
-	screen.blit(text_surface, (rect.centerx - text_surface.get_width() / 2, rect.centery - text_surface.get_height() / 2))
-
-
-def handle_text_edit(text, key, unicode_char, max_length=32):
-	if key in (pygame.K_BACKSPACE, pygame.K_DELETE):
-		return text[:-1]
-	if key in (pygame.K_TAB, pygame.K_RETURN, pygame.K_ESCAPE):
-		return text
-	if unicode_char and unicode_char.isprintable() and len(text) < max_length:
-		return text + unicode_char
-	return text
-
-
-def launch_host(port_value):
-	try:
-		port = int(port_value or 5000)
-	except ValueError:
-		raise ValueError("Port must be a number.")
-	host_game(port)
-
-
-def launch_join(ip_value, port_value):
-	try:
-		port = int(port_value or 5000)
-	except ValueError:
-		raise ValueError("Port must be a number.")
-	address = ip_value.strip() or "127.0.0.1"
-	client_game(address, port)
-
-
-def run_start_menu_window():
+def setup_window(title):
 	pygame.init()
-	screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-	pygame.display.set_caption("Racoon Game")
+	if pygame.display.get_driver() == "offscreen":
+		pygame.quit()
+		raise RuntimeError("No graphical display is available. Run the game on a local desktop.")
+	window = pygame.display.set_mode((WIDTH, HEIGHT))
+	pygame.display.set_caption(title)
+	return window
+
+
+def keyboard_state():
+	keys = pygame.key.get_pressed()
+	return {
+		"type": "input",
+		"left": bool(keys[pygame.K_LEFT]),
+		"right": bool(keys[pygame.K_RIGHT]),
+		"up": bool(keys[pygame.K_UP]),
+		"down": bool(keys[pygame.K_DOWN]),
+	}
+
+
+def move_player(rect, controls):
+	if controls.get("left"):
+		rect.x -= 5
+	if controls.get("right"):
+		rect.x += 5
+	if controls.get("up"):
+		rect.y -= 5
+	if controls.get("down"):
+		rect.y += 5
+	rect.clamp_ip(pygame.Rect(0, 0, WIDTH, HEIGHT))
+
+
+def host_game(port):
+	try:
+		window = setup_window(f"LAN Game Host - port {port}")
+	except RuntimeError:
+		pygame.init()
+		window = None
+		print(f"Running headlessly on TCP port {port}. Connect desktop clients to this host.")
+	server = GameServer("0.0.0.0", port)
+	server.start()
 	clock = pygame.time.Clock()
-	font = pygame.font.Font(None, 36)
-	small_font = pygame.font.Font(None, 26)
+	font = pygame.font.Font(None, 28) if window else None
+	players = {0: pygame.Rect(375, 275, PLAYER_SIZE, PLAYER_SIZE)}
+	running = True
+	try:
+		while running:
+			if window:
+				for event in pygame.event.get():
+					if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+						running = False
 
-	mode = "host"
-	ip_text = "127.0.0.1"
-	port_text = "5000"
-	active_field = "port"
-	status_text = ""
+			if window:
+				move_player(players[0], keyboard_state())
+			inputs = server.get_inputs()
+			with server.lock:
+				connected_ids = set(server.clients)
+			for player_id in connected_ids:
+				players.setdefault(player_id, pygame.Rect(75 + player_id * 110, 275, PLAYER_SIZE, PLAYER_SIZE))
+				move_player(players[player_id], inputs.get(player_id, {}))
+			for player_id in set(players) - connected_ids - {0}:
+				players.pop(player_id)
 
-	host_button = pygame.Rect(120, 160, 260, 90)
-	join_button = pygame.Rect(520, 160, 260, 90)
-	ip_rect = pygame.Rect(180, 340, 540, 60)
-	port_rect = pygame.Rect(180, 430, 540, 60)
-	start_rect = pygame.Rect(320, 520, 260, 60)
+			state = {str(player_id): [rect.x, rect.y] for player_id, rect in players.items()}
+			server.broadcast({"type": "state", "players": state})
+			if window:
+				window.fill((30, 35, 50))
+				for player_id, rect in players.items():
+					pygame.draw.rect(window, COLORS[player_id % len(COLORS)], rect)
+					label = font.render(str(player_id + 1), True, (255, 255, 255))
+					window.blit(label, (rect.x + 20, rect.y + 14))
+				status = font.render(f"Players: {len(players)}/{MAX_PLAYERS} | ESC to stop", True, (220, 220, 220))
+				window.blit(status, (15, 15))
+				pygame.display.flip()
+			clock.tick(60)
+	except KeyboardInterrupt:
+		pass
+	finally:
+		server.close()
+		pygame.quit()
 
-	while True:
-		for event in pygame.event.get():
-			if event.type == pygame.QUIT:
-				pygame.quit()
-				return
-			if event.type == pygame.KEYDOWN:
-				if event.key == pygame.K_ESCAPE:
-					pygame.quit()
-					return
-				if event.key == pygame.K_TAB:
-					if mode == "join":
-						active_field = "ip" if active_field == "port" else "port"
-					else:
-						active_field = "port"
-					status_text = ""
-					continue
-				if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
-					try:
-						if mode == "host":
-							pygame.quit()
-							launch_host(port_text)
-						else:
-							pygame.quit()
-							launch_join(ip_text, port_text)
-						return
-					except ValueError as exc:
-						status_text = str(exc)
-					continue
-				if mode == "join" and active_field == "ip":
-					ip_text = handle_text_edit(ip_text, event.key, event.unicode, max_length=32)
-				elif active_field == "port":
-					port_text = handle_text_edit(port_text, event.key, event.unicode, max_length=5)
-				status_text = ""
-			elif event.type == pygame.MOUSEBUTTONDOWN:
-				mouse_pos = pygame.mouse.get_pos()
-				if host_button.collidepoint(mouse_pos):
-					mode = "host"
-					active_field = "port"
-					status_text = ""
-				if join_button.collidepoint(mouse_pos):
-					mode = "join"
-					active_field = "ip"
-					status_text = ""
-				if mode == "join" and ip_rect.collidepoint(mouse_pos):
-					active_field = "ip"
-				if port_rect.collidepoint(mouse_pos):
-					active_field = "port"
-				if start_rect.collidepoint(mouse_pos):
-					try:
-						pygame.quit()
-						if mode == "host":
-							launch_host(port_text)
-						else:
-							launch_join(ip_text, port_text)
-						return
-					except ValueError as exc:
-						status_text = str(exc)
 
-		screen.fill(BG_COLOR)
-		title = font.render("Racoon Game", True, TEXT_COLOR)
-		screen.blit(title, (WINDOW_WIDTH / 2 - title.get_width() / 2, 40))
+def client_game(address, port):
+	connection = socket.create_connection((address, port))
+	reader = connection.makefile("r", encoding="utf-8")
+	welcome = json.loads(reader.readline())
+	player_id = welcome["player_id"]
+	latest_state = {}
+	state_lock = threading.Lock()
+	running = True
 
-		draw_button(screen, font, host_button, "Host Game", selected=(mode == "host"))
-		draw_button(screen, font, join_button, "Join Game", selected=(mode == "join"))
+	def receive_states():
+		nonlocal running, latest_state
+		try:
+			for line in reader:
+				message = json.loads(line)
+				if message.get("type") == "state":
+					with state_lock:
+						latest_state = message["players"]
+		except (OSError, ValueError):
+			running = False
 
-		input_box(screen, font, ip_rect, "Host IP", ip_text, active_field == "ip" and mode == "join")
-		input_box(screen, font, port_rect, "Port", port_text, active_field == "port")
-		draw_button(screen, font, start_rect, "Start Host" if mode == "host" else "Connect", selected=True)
-
-		helper = "Type the host computer IP address to connect." if mode == "join" else "Open the room and wait for players to connect."
-		helper_surface = small_font.render(helper, True, SUBTEXT_COLOR)
-		screen.blit(helper_surface, (WINDOW_WIDTH / 2 - helper_surface.get_width() / 2, 300))
-
-		if status_text:
-			status_surface = small_font.render(status_text, True, ERROR_COLOR)
-			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 500))
-
-		pygame.display.flip()
-		clock.tick(60)
+	threading.Thread(target=receive_states, daemon=True).start()
+	window = setup_window(f"LAN Game - Player {player_id + 1}")
+	clock = pygame.time.Clock()
+	font = pygame.font.Font(None, 28)
+	try:
+		while running:
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
+					running = False
+			try:
+				send_message(connection, keyboard_state())
+			except OSError:
+				running = False
+			with state_lock:
+				state = latest_state.copy()
+			window.fill((30, 35, 50))
+			for raw_id, position in state.items():
+				rect = pygame.Rect(position[0], position[1], PLAYER_SIZE, PLAYER_SIZE)
+				pygame.draw.rect(window, COLORS[int(raw_id) % len(COLORS)], rect)
+				label = font.render(str(int(raw_id) + 1), True, (255, 255, 255))
+				window.blit(label, (rect.x + 20, rect.y + 14))
+			status = font.render(f"Player {player_id + 1} | ESC to disconnect", True, (220, 220, 220))
+			window.blit(status, (15, 15))
+			pygame.display.flip()
+			clock.tick(60)
+	finally:
+		connection.close()
+		pygame.quit()
 
 
 def main():
-	parser = argparse.ArgumentParser(description="Start menu for the LAN multiplayer game")
-	parser.add_argument("--host", action="store_true", help="start the host immediately")
-	parser.add_argument("--connect", metavar="ADDRESS", help="connect to a host immediately")
-	parser.add_argument("--port", type=int, default=5000, help="TCP port to use")
+	parser = argparse.ArgumentParser(description="A small LAN multiplayer Pygame demo")
+	mode = parser.add_mutually_exclusive_group(required=True)
+	mode.add_argument("--host", action="store_true", help="start the authoritative LAN server")
+	mode.add_argument("--connect", metavar="ADDRESS", help="connect to a host on the LAN")
+	parser.add_argument("--port", type=int, default=PORT, help=f"TCP port (default: {PORT})")
 	args = parser.parse_args()
-
 	if args.host:
 		host_game(args.port)
-		return
-
-	if args.connect:
+	else:
 		client_game(args.connect, args.port)
-		return
-
-	run_start_menu_window()
 
 
 if __name__ == "__main__":
