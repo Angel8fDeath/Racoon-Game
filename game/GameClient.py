@@ -4,7 +4,7 @@ import threading
 
 import pygame
 
-from lobby import LobbyView
+from lobby import LobbyView, RED_BRIGHT
 from GameUtils import (
 	HEIGHT,
 	PLAYER_SIZE,
@@ -29,13 +29,14 @@ def client_game(address, port, player_name="Player"):
 	send_message(connection, {"type": "player_info", "name": player_name})
 	latest_state = {}
 	latest_names = {str(player_id): player_name}
-	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors"}
+	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors", "chaser_id": None}
 	state_lock = threading.Lock()
 	running = True
 	game_started = False
+	game_chaser_id = None
 
 	def receive_states():
-		nonlocal running, latest_state, latest_names, lobby_state, game_started
+		nonlocal running, latest_state, latest_names, lobby_state, game_started, game_chaser_id
 		try:
 			for line in reader:
 				message = json.loads(line)
@@ -48,6 +49,7 @@ def client_game(address, port, player_name="Player"):
 						lobby_state = message
 						latest_names = message.get("names", latest_names)
 				elif message.get("type") == "start_game":
+					game_chaser_id = message.get("chaser_id")
 					game_started = True
 		except (OSError, ValueError):
 			running = False
@@ -98,7 +100,8 @@ def client_game(address, port, player_name="Player"):
 			for raw_id, position in state.items():
 				rect = pygame.Rect(position[0] - camera_x, position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
 				window.blit(player_image, rect)
-				label = font.render(names.get(raw_id, str(int(raw_id) + 1)), True, (255, 255, 255))
+				label_color = RED_BRIGHT if int(raw_id) == game_chaser_id else (255, 255, 255)
+				label = font.render(names.get(raw_id, str(int(raw_id) + 1)), True, label_color)
 				window.blit(label, (rect.x + 20, rect.y + 14))
 			status = font.render(f"{player_name} | ESC to disconnect", True, (220, 220, 220))
 			window.blit(status, (15, 15))

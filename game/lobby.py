@@ -1,7 +1,7 @@
 import pygame
 
 
-MODE_OPTIONS = ("Survivors", "FoodFind", "Chase")
+MODE_OPTIONS = ("Chase", "FoodFind", "Survivors")
 SKIN_OPTIONS = ("Raccoon", "Coming Soon", "Coming Soon")
 
 BACKGROUND = (15, 17, 22)
@@ -28,7 +28,10 @@ class LobbyView:
 		self.small_font = pygame.font.Font(None, 30)
 		self.mode_rects = []
 		self.skin_rects = []
+		self.roster_rects = []
+		self.roster_players = []
 		self.start_rect = pygame.Rect(0, 0, 0, 0)
+		self.current_mode = MODE_OPTIONS[0]
 		self._update_layout(pygame.display.get_surface())
 
 	def _update_layout(self, screen):
@@ -44,6 +47,7 @@ class LobbyView:
 		self.small_font = pygame.font.Font(None, max(1, round(20 * scale)))
 		self.mode_rects = [self._rect(250, 172 + index * 82, 330, 66) for index in range(len(MODE_OPTIONS))]
 		self.skin_rects = [self._rect(610, 172 + index * 82, 155, 66) for index in range(len(SKIN_OPTIONS))]
+		self.roster_rects = [self._rect(50, 194 + index * 55, 158, 40) for index in range(5)]
 		self.start_rect = self._rect(250, 488, 330, 54)
 
 	def _rect(self, x, y, width, height):
@@ -67,12 +71,17 @@ class LobbyView:
 		for index, rect in enumerate(self.mode_rects):
 			if rect.collidepoint(mouse_pos):
 				return ("vote_mode", MODE_OPTIONS[index])
+		if self.is_host and self.current_mode == "Chase":
+			for index, rect in enumerate(self.roster_rects):
+				if rect.collidepoint(mouse_pos) and index < len(self.roster_players):
+					return ("select_chaser", self.roster_players[index])
 		if self.is_host and self.start_rect.collidepoint(mouse_pos):
 			return "start_game"
 		return None
 
 	def draw(self, screen, lobby_state):
 		self._update_layout(screen)
+		self.current_mode = lobby_state.get("selected_mode", MODE_OPTIONS[0])
 		screen.fill(BACKGROUND)
 		self._draw_background_details(screen)
 		self._draw_header(screen, lobby_state)
@@ -106,8 +115,10 @@ class LobbyView:
 		heading = self.heading_font.render("SQUAD", True, TEXT)
 		screen.blit(heading, self._pos(52, 146))
 		players = lobby_state.get("players", [])
+		self.roster_players = players
 		virtual_player = lobby_state.get("virtual_player")
 		names = lobby_state.get("names", {})
+		chaser_id = lobby_state.get("chaser_id")
 		for index, player_id in enumerate(players):
 			row = self._rect(50, 194 + index * 55, 158, 40)
 			pygame.draw.rect(screen, RED if player_id == self.player_id else PANEL_LIGHT, row)
@@ -117,8 +128,12 @@ class LobbyView:
 				name = names.get(str(player_id), "HOST" if player_id == 0 else f"PLAYER {player_id + 1}")
 			if player_id == self.player_id:
 				name += "  (YOU)"
-			text = self.small_font.render(name, True, TEXT)
+			name_color = RED_BRIGHT if player_id == chaser_id else TEXT
+			text = self.small_font.render(name, True, name_color)
 			screen.blit(text, self._pos(60, 205 + index * 55))
+		if self.current_mode == "Chase" and self.is_host:
+			hint = self.small_font.render("CLICK A SQUAD MEMBER TO ASSIGN CHASER", True, AMBER)
+			screen.blit(hint, self._pos(250, 455))
 		if not players:
 			text = self.small_font.render("SEARCHING...", True, MUTED)
 			screen.blit(text, self._pos(52, 198))
@@ -158,6 +173,11 @@ class LobbyView:
 		selected = lobby_state.get("selected_mode", MODE_OPTIONS[0])
 		status = self.small_font.render(f"CURRENT PLAYMODE: {selected.upper()}  //  VOTE TO CHANGE THE DROP", True, MUTED)
 		screen.blit(status, self._pos(34, 552))
+		chaser_id = lobby_state.get("chaser_id")
+		if selected == "Chase" and chaser_id is not None:
+			chaser_name = lobby_state.get("names", {}).get(str(chaser_id), "PLAYER")
+			chaser_status = self.small_font.render(f"CHASER: {chaser_name.upper()}", True, RED_BRIGHT)
+			screen.blit(chaser_status, self._pos(610, 552))
 
 	def _panel(self, screen, rect, selected=False, disabled=False):
 		fill = (71, 39, 38) if selected else PANEL

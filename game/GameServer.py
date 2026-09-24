@@ -39,6 +39,7 @@ class GameServer:
 		self.player_image_data = base64.b64encode(PLAYER_IMAGE_PATH.read_bytes()).decode("ascii")
 		self.phase = "lobby"
 		self.votes = {0: MODE_OPTIONS[0]}
+		self.chaser_id = None
 		self.names = {0: "HOST"}
 		if self.virtual_player_id is not None:
 			self.names[self.virtual_player_id] = "VM RACCOON"
@@ -127,12 +128,16 @@ class GameServer:
 			votes = {str(player_id): mode for player_id, mode in self.votes.items() if player_id in players}
 			counts = {mode: sum(value == mode for value in votes.values()) for mode in MODE_OPTIONS}
 			selected_mode = max(MODE_OPTIONS, key=lambda mode: (counts[mode], -MODE_OPTIONS.index(mode)))
+			chaser_id = None
+			if selected_mode == "Chase":
+				chaser_id = self.chaser_id if self.chaser_id in players else 0
 			return {
 				"players": players,
 				"virtual_player": self.virtual_player_id,
 				"names": {str(player_id): name for player_id, name in self.names.items()},
 				"votes": votes,
 				"selected_mode": selected_mode,
+				"chaser_id": chaser_id,
 			}
 
 	def handle_lobby_action(self, player_id, message):
@@ -142,6 +147,14 @@ class GameServer:
 			with self.lock:
 				if player_id in self.clients:
 					self.votes[player_id] = message["mode"]
+		elif message.get("action") == "select_chaser" and player_id == 0:
+			with self.lock:
+				players = [0]
+				if self.virtual_player_id is not None:
+					players.append(self.virtual_player_id)
+				players.extend(self.clients)
+				if message.get("player_id") in players:
+					self.chaser_id = message["player_id"]
 		elif message.get("action") == "start_game" and player_id == 0:
 			self.start_game()
 
@@ -149,7 +162,8 @@ class GameServer:
 		if self.phase != "lobby":
 			return
 		self.phase = "game"
-		self.broadcast({"type": "start_game", "mode": self.get_lobby_state()["selected_mode"]})
+		lobby_state = self.get_lobby_state()
+		self.broadcast({"type": "start_game", "mode": lobby_state["selected_mode"], "chaser_id": lobby_state["chaser_id"]})
 
 	def broadcast(self, message):
 		with self.lock:
@@ -206,6 +220,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 					elif isinstance(action, tuple) and action[0] == "vote_mode":
 						with server.lock:
 							server.votes[0] = action[1]
+					elif isinstance(action, tuple) and action[0] == "select_chaser":
+						server.handle_lobby_action(0, {"action": "select_chaser", "player_id": action[1]})
 					elif action == "start_game":
 						server.start_game()
 				lobby_state = server.get_lobby_state()
@@ -235,7 +251,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				players.pop(player_id)
 
 			state = {str(player_id): [rect.x, rect.y] for player_id, rect in players.items()}
-			server.broadcast({"type": "state", "players": state, "names": server.get_player_names()})
+			lobby_state = server.get_lobby_state()
+			server.broadcast({"type": "state", "players": state, "names": server.get_player_names(), "chaser_id": lobby_state["chaser_id"]})
 			if window:
 				camera_x, camera_y = camera_position([players[0].x, players[0].y])
 				names = server.get_player_names()
@@ -243,7 +260,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				for player_id, rect in players.items():
 					screen_rect = rect.move(-camera_x, -camera_y)
 					window.blit(player_image, screen_rect)
-					label = font.render(names.get(str(player_id), str(player_id + 1)), True, (255, 255, 255))
+					label_color = (239, 98, 68) if player_id == lobby_state["chaser_id"] else (255, 255, 255)
+					label = font.render(names.get(str(player_id), str(player_id + 1)), True, label_color)
 					window.blit(label, (screen_rect.x + 20, screen_rect.y + 14))
 				status = font.render(f"Players: {len(players)}/{MAX_PLAYERS} | ESC to stop", True, (220, 220, 220))
 				window.blit(status, (15, 15))
