@@ -27,6 +27,8 @@ if errorlevel 1 (
     exit /b 1
 )
 
+if /I "%~1"=="--skip-update" goto setup_environment
+
 REM ------------------------------------------
 REM Update the game
 REM ------------------------------------------
