@@ -96,6 +96,12 @@ def all_non_chasers_frozen(players, chaser_id, frozen_players):
 	return bool(non_chasers) and non_chasers.issubset(frozen_players)
 
 
+def spawn_position(player_id, chaser_id):
+	if player_id == chaser_id:
+		return WORLD_WIDTH - 500, WORLD_HEIGHT // 2
+	return 240 + player_id * 110, WORLD_HEIGHT // 2 + (player_id % 3) * 100
+
+
 def update_food_action(server, player_id, player_rect, controls, now):
 	action = server.food_actions.get(player_id)
 	if action:
@@ -398,14 +404,16 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 			if server.phase == "game" and last_phase == "lobby":
 				lobby_state = server.get_lobby_state()
 				chaser_id = lobby_state["chaser_id"]
-				players[0] = pygame.Rect(WORLD_WIDTH - 500 if chaser_id == 0 else 240, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)
+				spawn_x, spawn_y = spawn_position(0, chaser_id)
+				players[0] = pygame.Rect(spawn_x, spawn_y, PLAYER_SIZE, PLAYER_SIZE)
 				if server.virtual_player_id is not None:
-					players[server.virtual_player_id] = pygame.Rect(WORLD_WIDTH - 500 if chaser_id == server.virtual_player_id else 400, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)
+					spawn_x, spawn_y = spawn_position(server.virtual_player_id, chaser_id)
+					players[server.virtual_player_id] = pygame.Rect(spawn_x, spawn_y, PLAYER_SIZE, PLAYER_SIZE)
 				with server.lock:
 					connected_ids = set(server.clients)
 				for player_id in connected_ids:
-					spawn_x = WORLD_WIDTH - 500 if player_id == chaser_id else 240 + player_id * 110
-					players[player_id] = pygame.Rect(spawn_x, WORLD_HEIGHT // 2 + (player_id % 3) * 100, PLAYER_SIZE, PLAYER_SIZE)
+					spawn_x, spawn_y = spawn_position(player_id, chaser_id)
+					players[player_id] = pygame.Rect(spawn_x, spawn_y, PLAYER_SIZE, PLAYER_SIZE)
 				server.caught_players.clear()
 				server.catch_progress.clear()
 				last_phase = "game"
@@ -465,8 +473,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				ai_input = debug_chaser_controls(server, players[server.virtual_player_id], players[0], now)
 			food_events = []
 			for player_id in connected_ids:
-				spawn_x = WORLD_WIDTH - 500 if player_id == chaser_id else 240 + player_id * 110
-				players.setdefault(player_id, pygame.Rect(spawn_x, WORLD_HEIGHT // 2 + (player_id % 3) * 100, PLAYER_SIZE, PLAYER_SIZE))
+				spawn_x, spawn_y = spawn_position(player_id, chaser_id)
+				players.setdefault(player_id, pygame.Rect(spawn_x, spawn_y, PLAYER_SIZE, PLAYER_SIZE))
 				food_event = update_food_action(server, player_id, players[player_id], inputs.get(player_id, {}), now) if lobby_state["selected_mode"] == "Chase" and player_id != chaser_id else None
 				if food_event:
 					food_events.append(food_event)
@@ -483,7 +491,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				move_player(players[server.virtual_player_id], ai_input, server.obstacles)
 			if 0 not in server.caught_players:
 				if 0 not in players:
-					players[0] = pygame.Rect(WORLD_WIDTH - 500 if chaser_id == 0 else 240, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)
+					spawn_x, spawn_y = spawn_position(0, chaser_id)
+					players[0] = pygame.Rect(spawn_x, spawn_y, PLAYER_SIZE, PLAYER_SIZE)
 				food_event = update_food_action(server, 0, players[0], host_input, now) if lobby_state["selected_mode"] == "Chase" and chaser_id != 0 else None
 				if food_event:
 					food_events.append(food_event)
@@ -545,7 +554,7 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				for player_id, action in server.food_actions.items()
 			}
 			food_counts = {str(player_id): count for player_id, count in server.carried_food.items()}
-			server.broadcast({"type": "state", "players": state, "names": server.get_player_names(), "chaser_id": chaser_id, "aims": aims, "catch_progress": catch_progress, "timer": round(remaining_time), "delivered_food": list(server.delivered_food), "food_counts": food_counts, "nest_food": server.nest_food, "food_actions": food_actions, "food_events": food_events, "frozen_players": [str(player_id) for player_id in server.frozen_players]})
+			server.broadcast({"type": "state", "players": state, "names": server.get_player_names(), "chaser_id": chaser_id, "aims": aims, "catch_progress": catch_progress, "timer": round(remaining_time), "delivered_food": list(server.delivered_food), "food_counts": food_counts, "nest_food": server.nest_food, "food_actions": food_actions, "food_events": food_events, "frozen_players": [str(player_id) for player_id in server.frozen_players], "obstacles": server.obstacles})
 			if window:
 				camera_x, camera_y = camera_position([players[0].x, players[0].y])
 				names = server.get_player_names()

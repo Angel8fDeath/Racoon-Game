@@ -78,6 +78,7 @@ def client_game(address, port, player_name="Player"):
 						latest_food_counts = message.get("food_counts", latest_food_counts)
 						latest_nest_food = message.get("nest_food", latest_nest_food)
 						latest_food_actions = message.get("food_actions", latest_food_actions)
+						latest_obstacles = message.get("obstacles", latest_obstacles)
 						for event in message.get("food_events", []):
 							latest_food_feedback[event["player_id"]] = (event["message"], time.monotonic() + 1.0)
 				elif message.get("type") == "lobby":
