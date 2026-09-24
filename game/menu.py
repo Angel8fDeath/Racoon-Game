@@ -2,34 +2,39 @@ import pygame
 
 from GameClient import client_game
 from GameServer import host_game
+from lobby import AMBER, BACKGROUND, MUTED, PANEL, PANEL_LIGHT, RED, RED_BRIGHT, TEXT
 
 
 WINDOW_WIDTH, WINDOW_HEIGHT = 900, 600
-BG_COLOR = (18, 22, 30)
-PANEL_COLOR = (33, 40, 54)
-BUTTON_COLOR = (84, 148, 255)
-BUTTON_ALT = (100, 175, 120)
-TEXT_COLOR = (240, 240, 240)
-SUBTEXT_COLOR = (170, 180, 200)
-BORDER_COLOR = (100, 120, 150)
-ERROR_COLOR = (255, 110, 110)
+ERROR_COLOR = (239, 98, 68)
 
 
-def input_box(screen, font, rect, label, text, active):
-	pygame.draw.rect(screen, (18, 27, 40) if active else PANEL_COLOR, rect, border_radius=10)
-	pygame.draw.rect(screen, BORDER_COLOR if active else (70, 82, 100), rect, 2, border_radius=10)
-	label_surface = font.render(label, True, SUBTEXT_COLOR)
-	screen.blit(label_surface, (rect.x, rect.y - 26))
-	text_surface = font.render(text, True, TEXT_COLOR)
-	screen.blit(text_surface, (rect.x + 14, rect.y + 12))
+def input_box(screen, font, rect, label, text, active, enabled=True):
+	fill = PANEL if enabled else (24, 26, 31)
+	border = RED_BRIGHT if active else (65, 68, 76)
+	text_color = TEXT if enabled else MUTED
+	pygame.draw.rect(screen, fill, rect)
+	pygame.draw.rect(screen, border, rect, 2)
+	label_surface = font.render(label, True, MUTED if enabled else (91, 93, 98))
+	screen.blit(label_surface, (rect.x, rect.y - 25))
+	text_surface = font.render(text, True, text_color)
+	screen.blit(text_surface, (rect.x + 16, rect.y + 16))
 
 
 def draw_button(screen, font, rect, label, selected=False):
-	color = BUTTON_ALT if selected else BUTTON_COLOR
-	pygame.draw.rect(screen, color, rect, border_radius=12)
-	pygame.draw.rect(screen, (255, 255, 255), rect, 2, border_radius=12)
-	text_surface = font.render(label, True, TEXT_COLOR)
+	color = (71, 39, 38) if selected else PANEL
+	border = RED_BRIGHT if selected else (65, 68, 76)
+	pygame.draw.rect(screen, color, rect)
+	pygame.draw.rect(screen, border, rect, 2)
+	text_surface = font.render(label, True, TEXT)
 	screen.blit(text_surface, (rect.centerx - text_surface.get_width() / 2, rect.centery - text_surface.get_height() / 2))
+
+
+def draw_background_details(screen):
+	for y in range(0, WINDOW_HEIGHT, 48):
+		pygame.draw.line(screen, (24, 27, 34), (0, y), (WINDOW_WIDTH, y), 1)
+	pygame.draw.polygon(screen, (30, 25, 28), [(0, 0), (300, 0), (0, 300)])
+	pygame.draw.polygon(screen, (35, 25, 25), [(900, 600), (650, 600), (900, 350)])
 
 
 def handle_text_edit(text, key, unicode_char, max_length=32):
@@ -64,8 +69,10 @@ def run_start_menu_window():
 	screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 	pygame.display.set_caption("Racoon Game")
 	clock = pygame.time.Clock()
-	font = pygame.font.Font(None, 36)
-	small_font = pygame.font.Font(None, 26)
+	title_font = pygame.font.Font(None, 42)
+	heading_font = pygame.font.Font(None, 30)
+	body_font = pygame.font.Font(None, 24)
+	small_font = pygame.font.Font(None, 20)
 
 	mode = "host"
 	ip_text = "127.0.0.1"
@@ -73,11 +80,11 @@ def run_start_menu_window():
 	active_field = "port"
 	status_text = ""
 
-	host_button = pygame.Rect(120, 160, 260, 90)
-	join_button = pygame.Rect(520, 160, 260, 90)
-	ip_rect = pygame.Rect(180, 340, 540, 60)
-	port_rect = pygame.Rect(180, 430, 540, 60)
-	start_rect = pygame.Rect(320, 520, 260, 60)
+	host_button = pygame.Rect(80, 145, 350, 86)
+	join_button = pygame.Rect(470, 145, 350, 86)
+	ip_rect = pygame.Rect(100, 315, 700, 58)
+	port_rect = pygame.Rect(100, 410, 700, 58)
+	start_rect = pygame.Rect(285, 495, 330, 54)
 
 	while True:
 		for event in pygame.event.get():
@@ -137,24 +144,33 @@ def run_start_menu_window():
 					except ValueError as exc:
 						status_text = str(exc)
 
-		screen.fill(BG_COLOR)
-		title = font.render("Racoon Game", True, TEXT_COLOR)
-		screen.blit(title, (WINDOW_WIDTH / 2 - title.get_width() / 2, 40))
+		screen.fill(BACKGROUND)
+		draw_background_details(screen)
+		pygame.draw.rect(screen, RED_BRIGHT, (34, 35, 7, 54))
+		title = title_font.render("DROP POD // RACCOON GAME", True, TEXT)
+		screen.blit(title, (57, 34))
+		subtitle = small_font.render("CHOOSE YOUR DEPLOYMENT CHANNEL", True, AMBER)
+		screen.blit(subtitle, (59, 73))
 
-		draw_button(screen, font, host_button, "Host Game", selected=(mode == "host"))
-		draw_button(screen, font, join_button, "Join Game", selected=(mode == "join"))
+		mode_heading = heading_font.render("DEPLOYMENT TYPE", True, TEXT)
+		screen.blit(mode_heading, (80, 112))
+		draw_button(screen, body_font, host_button, "HOST GAME", selected=(mode == "host"))
+		draw_button(screen, body_font, join_button, "JOIN GAME", selected=(mode == "join"))
 
-		input_box(screen, font, ip_rect, "Host IP", ip_text, active_field == "ip" and mode == "join")
-		input_box(screen, font, port_rect, "Port", port_text, active_field == "port")
-		draw_button(screen, font, start_rect, "Start Host" if mode == "host" else "Connect", selected=True)
+		input_box(screen, body_font, ip_rect, "HOST IP", ip_text, active_field == "ip" and mode == "join", enabled=mode == "join")
+		input_box(screen, body_font, port_rect, "PORT", port_text, active_field == "port", enabled=True)
+		draw_button(screen, body_font, start_rect, "START HOST" if mode == "host" else "CONNECT", selected=True)
 
-		helper = "Type the host computer IP address to connect." if mode == "join" else "Open the room and wait for players to connect."
-		helper_surface = small_font.render(helper, True, SUBTEXT_COLOR)
-		screen.blit(helper_surface, (WINDOW_WIDTH / 2 - helper_surface.get_width() / 2, 300))
+		helper = "ENTER THE HOST ADDRESS TO JOIN THE DROP." if mode == "join" else "OPEN A ROOM AND WAIT FOR YOUR SQUAD TO ARRIVE."
+		helper_surface = small_font.render(helper, True, MUTED)
+		screen.blit(helper_surface, (WINDOW_WIDTH / 2 - helper_surface.get_width() / 2, 270))
 
 		if status_text:
 			status_surface = small_font.render(status_text, True, ERROR_COLOR)
-			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 500))
+			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 575))
+		else:
+			status_surface = small_font.render("ESC TO ABORT  //  TAB TO CYCLE INPUTS", True, MUTED)
+			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 575))
 
 		pygame.display.flip()
 		clock.tick(60)

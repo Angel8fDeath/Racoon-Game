@@ -1,8 +1,8 @@
 import pygame
 from pathlib import Path
 import time
-
-from game import HEIGHT, PLAYER_SIZE, WIDTH, keyboard_state, move_player, setup_window
+import images
+from game.GameUtils import HEIGHT, PLAYER_SIZE, WIDTH, keyboard_state, move_player, setup_window
 
 
 def run_sandbox():
@@ -11,9 +11,10 @@ def run_sandbox():
     
     clock = pygame.time.Clock()
     font = pygame.font.Font(None, 28)
-    trash_image = pygame.image.load("Trash.png").convert_alpha()
+    trash_path = Path(__file__).parent / "images" / "Trash.png"
+    trash_image = pygame.image.load(trash_path).convert_alpha()
     trash_image = pygame.transform.scale(trash_image,(trash_image.get_width() * 9, trash_image.get_height() * 9))
-    raccoon_path = Path(__file__).with_name("RaccoonBASE.png.png")
+    raccoon_path = Path(__file__).parent / "images" / "RaccoonBASE.png"
     raccoon = pygame.image.load(raccoon_path).convert_alpha()
     raccoon = pygame.transform.smoothscale(raccoon, (PLAYER_SIZE, PLAYER_SIZE))
     player = pygame.Rect(

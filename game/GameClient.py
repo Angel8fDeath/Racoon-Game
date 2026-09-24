@@ -4,7 +4,20 @@ import threading
 
 import pygame
 
-from GameUtils import PLAYER_SIZE, keyboard_state, load_player_image, send_message, setup_window
+from lobby import LobbyView
+from GameUtils import (
+	HEIGHT,
+	PLAYER_SIZE,
+	WORLD_HEIGHT,
+	WORLD_WIDTH,
+	WIDTH,
+	camera_position,
+	draw_background,
+	keyboard_state,
+	load_player_image,
+	send_message,
+	setup_window,
+)
 
 
 def client_game(address, port):
@@ -13,17 +26,24 @@ def client_game(address, port):
 	welcome = json.loads(reader.readline())
 	player_id = welcome["player_id"]
 	latest_state = {}
+	lobby_state = {"players": [0, player_id], "votes": {}, "selected_mode": "Survivors"}
 	state_lock = threading.Lock()
 	running = True
+	game_started = False
 
 	def receive_states():
-		nonlocal running, latest_state
+		nonlocal running, latest_state, lobby_state, game_started
 		try:
 			for line in reader:
 				message = json.loads(line)
 				if message.get("type") == "state":
 					with state_lock:
 						latest_state = message["players"]
+				elif message.get("type") == "lobby":
+					with state_lock:
+						lobby_state = message
+				elif message.get("type") == "start_game":
+					game_started = True
 		except (OSError, ValueError):
 			running = False
 
@@ -32,7 +52,27 @@ def client_game(address, port):
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28)
 	player_image = load_player_image(welcome["player_image"])
+	lobby = LobbyView(player_id, False)
 	try:
+		while running and not game_started:
+			for event in pygame.event.get():
+				if event.type == pygame.QUIT:
+					running = False
+					continue
+				action = lobby.handle_event(event)
+				if action == "quit":
+					running = False
+				elif isinstance(action, tuple) and action[0] == "vote_mode":
+					try:
+						send_message(connection, {"type": "lobby_action", "action": "vote_mode", "mode": action[1]})
+					except OSError:
+						running = False
+			with state_lock:
+				current_lobby = lobby_state.copy()
+			lobby.draw(window, current_lobby)
+			pygame.display.flip()
+			clock.tick(30)
+
 		while running:
 			for event in pygame.event.get():
 				if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
@@ -43,9 +83,11 @@ def client_game(address, port):
 				running = False
 			with state_lock:
 				state = latest_state.copy()
-			window.fill((30, 35, 50))
+			local_position = state.get(str(player_id), [WORLD_WIDTH // 2, WORLD_HEIGHT // 2])
+			camera_x, camera_y = camera_position(local_position)
+			draw_background(window, camera_x, camera_y)
 			for raw_id, position in state.items():
-				rect = pygame.Rect(position[0], position[1], PLAYER_SIZE, PLAYER_SIZE)
+				rect = pygame.Rect(position[0] - camera_x, position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
 				window.blit(player_image, rect)
 				label = font.render(str(int(raw_id) + 1), True, (255, 255, 255))
 				window.blit(label, (rect.x + 20, rect.y + 14))
