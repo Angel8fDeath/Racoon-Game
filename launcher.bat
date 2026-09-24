@@ -133,13 +133,13 @@ echo.
 echo Starting game...
 echo.
 
-".venv\Scripts\python.exe" game\Main.py
+start "" ".venv\Scripts\python.exe" "game\Main.py"
 
 if errorlevel 1 (
     echo.
-    echo ==========================================
-    echo The game exited with an error.
-    echo ==========================================
+     echo ==========================================
+     echo The game could not be started.
+     echo ==========================================
     echo.
     pause
 )

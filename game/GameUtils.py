@@ -6,7 +6,7 @@ from pathlib import Path
 import pygame
 
 
-WIDTH, HEIGHT = 800, 600
+WIDTH, HEIGHT = 1200, 900
 WORLD_WIDTH, WORLD_HEIGHT = 2400, 1800
 PLAYER_SIZE = 50
 PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "RaccoonBASE.png"
@@ -23,7 +23,7 @@ def setup_window(title):
 	if pygame.display.get_driver() == "offscreen":
 		pygame.quit()
 		raise RuntimeError("No graphical display is available. Run the game on a local desktop.")
-	window = pygame.display.set_mode((WIDTH, HEIGHT))
+	window = pygame.display.set_mode((WIDTH, HEIGHT), pygame.RESIZABLE)
 	pygame.display.set_caption(title)
 	return window
 

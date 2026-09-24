@@ -59,6 +59,9 @@ def client_game(address, port):
 				if event.type == pygame.QUIT:
 					running = False
 					continue
+				if event.type == pygame.VIDEORESIZE:
+					window = pygame.display.set_mode(event.size, pygame.RESIZABLE)
+					continue
 				action = lobby.handle_event(event)
 				if action == "quit":
 					running = False
