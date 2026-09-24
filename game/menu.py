@@ -47,12 +47,12 @@ def handle_text_edit(text, key, unicode_char, max_length=32):
 	return text
 
 
-def launch_host(port_value):
+def launch_host(port_value, debug_mode=False):
 	try:
 		port = int(port_value or 5000)
 	except ValueError:
 		raise ValueError("Port must be a number.")
-	host_game(port)
+	host_game(port, debug_mode=debug_mode)
 
 
 def launch_join(ip_value, port_value):
@@ -79,12 +79,14 @@ def run_start_menu_window():
 	port_text = "5000"
 	active_field = "port"
 	status_text = ""
+	debug_mode = False
 
 	host_button = pygame.Rect(80, 145, 350, 86)
 	join_button = pygame.Rect(470, 145, 350, 86)
-	ip_rect = pygame.Rect(100, 315, 700, 58)
-	port_rect = pygame.Rect(100, 410, 700, 58)
-	start_rect = pygame.Rect(285, 495, 330, 54)
+	ip_rect = pygame.Rect(100, 340, 700, 58)
+	port_rect = pygame.Rect(100, 425, 700, 58)
+	debug_rect = pygame.Rect(100, 250, 700, 45)
+	start_rect = pygame.Rect(285, 510, 330, 54)
 
 	while True:
 		for event in pygame.event.get():
@@ -106,7 +108,7 @@ def run_start_menu_window():
 					try:
 						if mode == "host":
 							pygame.quit()
-							launch_host(port_text)
+							launch_host(port_text, debug_mode)
 						else:
 							pygame.quit()
 							launch_join(ip_text, port_text)
@@ -133,11 +135,13 @@ def run_start_menu_window():
 					active_field = "ip"
 				if port_rect.collidepoint(mouse_pos):
 					active_field = "port"
+				if mode == "host" and debug_rect.collidepoint(mouse_pos):
+					debug_mode = not debug_mode
 				if start_rect.collidepoint(mouse_pos):
 					try:
 						pygame.quit()
 						if mode == "host":
-							launch_host(port_text)
+							launch_host(port_text, debug_mode)
 						else:
 							launch_join(ip_text, port_text)
 						return
@@ -156,6 +160,7 @@ def run_start_menu_window():
 		screen.blit(mode_heading, (80, 112))
 		draw_button(screen, body_font, host_button, "HOST GAME", selected=(mode == "host"))
 		draw_button(screen, body_font, join_button, "JOIN GAME", selected=(mode == "join"))
+		draw_button(screen, small_font, debug_rect, "DEBUG MODE // ADD STATIONARY VM RACCOON", selected=debug_mode and mode == "host")
 
 		input_box(screen, body_font, ip_rect, "HOST IP", ip_text, active_field == "ip" and mode == "join", enabled=mode == "join")
 		input_box(screen, body_font, port_rect, "PORT", port_text, active_field == "port", enabled=True)
@@ -163,7 +168,7 @@ def run_start_menu_window():
 
 		helper = "ENTER THE HOST ADDRESS TO JOIN THE DROP." if mode == "join" else "OPEN A ROOM AND WAIT FOR YOUR SQUAD TO ARRIVE."
 		helper_surface = small_font.render(helper, True, MUTED)
-		screen.blit(helper_surface, (WINDOW_WIDTH / 2 - helper_surface.get_width() / 2, 270))
+		screen.blit(helper_surface, (WINDOW_WIDTH / 2 - helper_surface.get_width() / 2, 305))
 
 		if status_text:
 			status_surface = small_font.render(status_text, True, ERROR_COLOR)

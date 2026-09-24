@@ -24,7 +24,7 @@ from GameUtils import (
 
 
 class GameServer:
-	def __init__(self, host, port):
+	def __init__(self, host, port, debug_mode=False):
 		self.listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 		self.listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 		self.listener.bind((host, port))
@@ -33,7 +33,9 @@ class GameServer:
 		self.lock = threading.Lock()
 		self.clients = {}
 		self.inputs = {}
-		self.next_player_id = 1
+		self.debug_mode = debug_mode
+		self.virtual_player_id = 1 if debug_mode else None
+		self.next_player_id = 2 if debug_mode else 1
 		self.player_image_data = base64.b64encode(PLAYER_IMAGE_PATH.read_bytes()).decode("ascii")
 		self.phase = "lobby"
 		self.votes = {0: MODE_OPTIONS[0]}
@@ -52,7 +54,8 @@ class GameServer:
 				break
 
 			with self.lock:
-				if len(self.clients) >= MAX_PLAYERS - 1:
+				client_limit = MAX_PLAYERS - 2 if self.debug_mode else MAX_PLAYERS - 1
+				if len(self.clients) >= client_limit:
 					connection.close()
 					continue
 				player_id = self.next_player_id
@@ -103,12 +106,16 @@ class GameServer:
 
 	def get_lobby_state(self):
 		with self.lock:
-			players = [0, *sorted(self.clients)]
+			players = [0]
+			if self.virtual_player_id is not None:
+				players.append(self.virtual_player_id)
+			players.extend(sorted(self.clients))
 			votes = {str(player_id): mode for player_id, mode in self.votes.items() if player_id in players}
 			counts = {mode: sum(value == mode for value in votes.values()) for mode in MODE_OPTIONS}
 			selected_mode = max(MODE_OPTIONS, key=lambda mode: (counts[mode], -MODE_OPTIONS.index(mode)))
 			return {
 				"players": players,
+				"virtual_player": self.virtual_player_id,
 				"votes": votes,
 				"selected_mode": selected_mode,
 			}
@@ -148,19 +155,21 @@ class GameServer:
 			connection.close()
 
 
-def host_game(port):
+def host_game(port, debug_mode=False):
 	try:
 		window = setup_window(f"LAN Game Host - port {port}")
 	except RuntimeError:
 		pygame.init()
 		window = None
 		print(f"Running headlessly on TCP port {port}. Connect desktop clients to this host.")
-	server = GameServer("0.0.0.0", port)
+	server = GameServer("0.0.0.0", port, debug_mode=debug_mode)
 	server.start()
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28) if window else None
 	player_image = load_player_image() if window else None
 	players = {0: pygame.Rect(WORLD_WIDTH // 2, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)}
+	if debug_mode:
+		players[server.virtual_player_id] = pygame.Rect(WORLD_WIDTH // 2 + 110, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)
 	lobby = LobbyView(0, True) if window else None
 	running = True
 	try:
@@ -203,7 +212,10 @@ def host_game(port):
 			for player_id in connected_ids:
 				players.setdefault(player_id, pygame.Rect(WORLD_WIDTH // 2 + player_id * 110, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE))
 				move_player(players[player_id], inputs.get(player_id, {}))
-			for player_id in set(players) - connected_ids - {0}:
+			reserved_players = {0}
+			if server.virtual_player_id is not None:
+				reserved_players.add(server.virtual_player_id)
+			for player_id in set(players) - connected_ids - reserved_players:
 				players.pop(player_id)
 
 			state = {str(player_id): [rect.x, rect.y] for player_id, rect in players.items()}

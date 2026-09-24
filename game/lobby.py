@@ -106,10 +106,14 @@ class LobbyView:
 		heading = self.heading_font.render("SQUAD", True, TEXT)
 		screen.blit(heading, self._pos(52, 146))
 		players = lobby_state.get("players", [])
+		virtual_player = lobby_state.get("virtual_player")
 		for index, player_id in enumerate(players):
 			row = self._rect(50, 194 + index * 55, 158, 40)
 			pygame.draw.rect(screen, RED if player_id == self.player_id else PANEL_LIGHT, row)
-			name = "HOST" if player_id == 0 else f"PLAYER {player_id + 1}"
+			if player_id == virtual_player:
+				name = "VM RACCOON"
+			else:
+				name = "HOST" if player_id == 0 else f"PLAYER {player_id + 1}"
 			if player_id == self.player_id:
 				name += "  (YOU)"
 			text = self.small_font.render(name, True, TEXT)
