@@ -13,6 +13,8 @@ from GameUtils import (
 	WIDTH,
 	camera_position,
 	draw_background,
+	draw_flashlight,
+	draw_catch_indicator,
 	keyboard_state,
 	load_player_image,
 	send_message,
@@ -29,6 +31,8 @@ def client_game(address, port, player_name="Player"):
 	send_message(connection, {"type": "player_info", "name": player_name})
 	latest_state = {}
 	latest_names = {str(player_id): player_name}
+	latest_aims = {}
+	latest_catch_progress = {}
 	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors", "chaser_id": None}
 	state_lock = threading.Lock()
 	running = True
@@ -36,7 +40,7 @@ def client_game(address, port, player_name="Player"):
 	game_chaser_id = None
 
 	def receive_states():
-		nonlocal running, latest_state, latest_names, lobby_state, game_started, game_chaser_id
+		nonlocal running, latest_state, latest_names, latest_aims, latest_catch_progress, lobby_state, game_started, game_chaser_id
 		try:
 			for line in reader:
 				message = json.loads(line)
@@ -44,6 +48,9 @@ def client_game(address, port, player_name="Player"):
 					with state_lock:
 						latest_state = message["players"]
 						latest_names = message.get("names", latest_names)
+						latest_aims = message.get("aims", latest_aims)
+						game_chaser_id = message.get("chaser_id", game_chaser_id)
+						latest_catch_progress = message.get("catch_progress", latest_catch_progress)
 				elif message.get("type") == "lobby":
 					with state_lock:
 						lobby_state = message
@@ -94,15 +101,23 @@ def client_game(address, port, player_name="Player"):
 			with state_lock:
 				state = latest_state.copy()
 				names = latest_names.copy()
+				aims = latest_aims.copy()
+				catch_progress = latest_catch_progress.copy()
 			local_position = state.get(str(player_id), [WORLD_WIDTH // 2, WORLD_HEIGHT // 2])
 			camera_x, camera_y = camera_position(local_position)
 			draw_background(window, camera_x, camera_y)
+			if game_chaser_id is not None and str(game_chaser_id) in state:
+				chaser_position = state[str(game_chaser_id)]
+				chaser_rect = pygame.Rect(chaser_position[0] - camera_x, chaser_position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
+				draw_flashlight(window, chaser_rect.center, aims.get(str(game_chaser_id), [0, -1]))
 			for raw_id, position in state.items():
 				rect = pygame.Rect(position[0] - camera_x, position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
 				window.blit(player_image, rect)
 				label_color = RED_BRIGHT if int(raw_id) == game_chaser_id else (255, 255, 255)
 				label = font.render(names.get(raw_id, str(int(raw_id) + 1)), True, label_color)
 				window.blit(label, (rect.x + 20, rect.y + 14))
+				if int(raw_id) != game_chaser_id and game_chaser_id is not None:
+					draw_catch_indicator(window, (rect.centerx, rect.top - 16), float(catch_progress.get(raw_id, 0.0)))
 			status = font.render(f"{player_name} | ESC to disconnect", True, (220, 220, 220))
 			window.blit(status, (15, 15))
 			pygame.display.flip()

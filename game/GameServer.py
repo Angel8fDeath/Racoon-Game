@@ -16,6 +16,9 @@ from GameUtils import (
 	keyboard_state,
 	camera_position,
 	draw_background,
+	draw_catch_indicator,
+	draw_flashlight,
+	is_inside_flashlight,
 	load_player_image,
 	move_player,
 	send_message,
@@ -198,6 +201,8 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 	font = pygame.font.Font(None, 28) if window else None
 	player_image = load_player_image() if window else None
 	players = {0: pygame.Rect(WORLD_WIDTH // 2, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)}
+	server.catch_progress = {}
+	server.caught_players = set()
 	if debug_mode:
 		players[server.virtual_player_id] = pygame.Rect(WORLD_WIDTH // 2 + 110, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)
 	lobby = LobbyView(0, True) if window else None
@@ -236,14 +241,18 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 					if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
 						running = False
 
-			if window:
-				move_player(players[0], keyboard_state())
+			host_input = keyboard_state() if window else {"aim": [0, -1]}
 			inputs = server.get_inputs()
+			lobby_state = server.get_lobby_state()
+			chaser_id = lobby_state["chaser_id"]
 			with server.lock:
 				connected_ids = set(server.clients)
 			for player_id in connected_ids:
 				players.setdefault(player_id, pygame.Rect(WORLD_WIDTH // 2 + player_id * 110, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE))
-				move_player(players[player_id], inputs.get(player_id, {}))
+				if player_id not in server.caught_players:
+					move_player(players[player_id], inputs.get(player_id, {}))
+			if 0 not in server.caught_players:
+				move_player(players[0], host_input)
 			reserved_players = {0}
 			if server.virtual_player_id is not None:
 				reserved_players.add(server.virtual_player_id)
@@ -251,18 +260,44 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 				players.pop(player_id)
 
 			state = {str(player_id): [rect.x, rect.y] for player_id, rect in players.items()}
-			lobby_state = server.get_lobby_state()
-			server.broadcast({"type": "state", "players": state, "names": server.get_player_names(), "chaser_id": lobby_state["chaser_id"]})
+			aims = {"0": host_input.get("aim", [0, -1])}
+			for player_id in connected_ids:
+				aims[str(player_id)] = inputs.get(player_id, {}).get("aim", [0, -1])
+			if lobby_state["selected_mode"] == "Chase" and chaser_id in players:
+				chaser_center = players[chaser_id].center
+				for player_id, player_rect in players.items():
+					if player_id == chaser_id:
+						continue
+					if player_id in server.caught_players:
+						server.catch_progress[player_id] = 1.0
+						continue
+					inside_flashlight = is_inside_flashlight(chaser_center, player_rect.center, aims.get(str(chaser_id), [0, -1]))
+					progress = server.catch_progress.get(player_id, 0.0)
+					progress += 1 / 90 if inside_flashlight else -1 / 30
+					server.catch_progress[player_id] = max(0.0, min(1.0, progress))
+					if server.catch_progress[player_id] >= 1.0:
+						server.caught_players.add(player_id)
+			else:
+				server.catch_progress.clear()
+				server.caught_players.clear()
+			catch_progress = {str(player_id): progress for player_id, progress in server.catch_progress.items()}
+			server.broadcast({"type": "state", "players": state, "names": server.get_player_names(), "chaser_id": chaser_id, "aims": aims, "catch_progress": catch_progress, "caught_players": [str(player_id) for player_id in server.caught_players]})
 			if window:
 				camera_x, camera_y = camera_position([players[0].x, players[0].y])
 				names = server.get_player_names()
 				draw_background(window, camera_x, camera_y)
+				chaser_id = lobby_state["chaser_id"]
+				if chaser_id in players:
+					chaser_screen = players[chaser_id].move(-camera_x, -camera_y)
+					draw_flashlight(window, chaser_screen.center, aims.get(str(chaser_id), [0, -1]))
 				for player_id, rect in players.items():
 					screen_rect = rect.move(-camera_x, -camera_y)
 					window.blit(player_image, screen_rect)
 					label_color = (239, 98, 68) if player_id == lobby_state["chaser_id"] else (255, 255, 255)
 					label = font.render(names.get(str(player_id), str(player_id + 1)), True, label_color)
 					window.blit(label, (screen_rect.x + 20, screen_rect.y + 14))
+					if player_id != chaser_id and lobby_state["selected_mode"] == "Chase":
+						draw_catch_indicator(window, (screen_rect.centerx, screen_rect.top - 16), server.catch_progress.get(player_id, 0.0))
 				status = font.render(f"Players: {len(players)}/{MAX_PLAYERS} | ESC to stop", True, (220, 220, 220))
 				window.blit(status, (15, 15))
 				pygame.display.flip()
