@@ -141,7 +141,7 @@ echo.
 echo Starting game...
 echo.
 
-".venv\Scripts\python.exe" game\menu.py
+".venv\Scripts\python.exe" game\Main.py
 
 if errorlevel 1 (
     echo.

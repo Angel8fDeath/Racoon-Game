@@ -1,8 +1,7 @@
-import argparse
-
 import pygame
 
-from game import client_game, host_game
+from GameClient import client_game
+from GameServer import host_game
 
 
 WINDOW_WIDTH, WINDOW_HEIGHT = 900, 600
@@ -160,24 +159,3 @@ def run_start_menu_window():
 		pygame.display.flip()
 		clock.tick(60)
 
-
-def main():
-	parser = argparse.ArgumentParser(description="Start menu for the LAN multiplayer game")
-	parser.add_argument("--host", action="store_true", help="start the host immediately")
-	parser.add_argument("--connect", metavar="ADDRESS", help="connect to a host immediately")
-	parser.add_argument("--port", type=int, default=5000, help="TCP port to use")
-	args = parser.parse_args()
-
-	if args.host:
-		host_game(args.port)
-		return
-
-	if args.connect:
-		client_game(args.connect, args.port)
-		return
-
-	run_start_menu_window()
-
-
-if __name__ == "__main__":
-	main()

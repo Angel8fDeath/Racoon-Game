@@ -1,24 +1,20 @@
-import argparse
 import base64
-import io
 import json
-from pathlib import Path
 import socket
 import threading
 
 import pygame
 
-
-WIDTH, HEIGHT = 800, 600
-PLAYER_SIZE = 50
-PLAYER_IMAGE_PATH = Path(__file__).with_name("RaccoonBASE.png")
-MAX_PLAYERS = 5
-PORT = 5000
-COLORS = [(80, 190, 120), (240, 120, 90), (100, 160, 240), (230, 200, 80), (190, 110, 220)]
-
-
-def send_message(connection, message):
-	connection.sendall((json.dumps(message) + "\n").encode("utf-8"))
+from GameUtils import (
+	MAX_PLAYERS,
+	PLAYER_IMAGE_PATH,
+	PLAYER_SIZE,
+	keyboard_state,
+	load_player_image,
+	move_player,
+	send_message,
+	setup_window,
+)
 
 
 class GameServer:
@@ -111,48 +107,6 @@ class GameServer:
 			connection.close()
 
 
-def setup_window(title):
-	pygame.init()
-	if pygame.display.get_driver() == "offscreen":
-		pygame.quit()
-		raise RuntimeError("No graphical display is available. Run the game on a local desktop.")
-	window = pygame.display.set_mode((WIDTH, HEIGHT))
-	pygame.display.set_caption(title)
-	return window
-
-
-def load_player_image(image_data=None):
-	if image_data:
-		image_source = io.BytesIO(base64.b64decode(image_data))
-	else:
-		image_source = str(PLAYER_IMAGE_PATH)
-	image = pygame.image.load(image_source).convert_alpha()
-	return pygame.transform.smoothscale(image, (PLAYER_SIZE, PLAYER_SIZE))
-
-
-def keyboard_state():
-	keys = pygame.key.get_pressed()
-	return {
-		"type": "input",
-		"left": bool(keys[pygame.K_LEFT]),
-		"right": bool(keys[pygame.K_RIGHT]),
-		"up": bool(keys[pygame.K_UP]),
-		"down": bool(keys[pygame.K_DOWN]),
-	}
-
-
-def move_player(rect, controls):
-	if controls.get("left"):
-		rect.x -= 5
-	if controls.get("right"):
-		rect.x += 5
-	if controls.get("up"):
-		rect.y -= 5
-	if controls.get("down"):
-		rect.y += 5
-	rect.clamp_ip(pygame.Rect(0, 0, WIDTH, HEIGHT))
-
-
 def host_game(port):
 	try:
 		window = setup_window(f"LAN Game Host - port {port}")
@@ -202,71 +156,3 @@ def host_game(port):
 	finally:
 		server.close()
 		pygame.quit()
-
-
-def client_game(address, port):
-	connection = socket.create_connection((address, port))
-	reader = connection.makefile("r", encoding="utf-8")
-	welcome = json.loads(reader.readline())
-	player_id = welcome["player_id"]
-	latest_state = {}
-	state_lock = threading.Lock()
-	running = True
-
-	def receive_states():
-		nonlocal running, latest_state
-		try:
-			for line in reader:
-				message = json.loads(line)
-				if message.get("type") == "state":
-					with state_lock:
-						latest_state = message["players"]
-		except (OSError, ValueError):
-			running = False
-
-	threading.Thread(target=receive_states, daemon=True).start()
-	window = setup_window(f"LAN Game - Player {player_id + 1}")
-	clock = pygame.time.Clock()
-	font = pygame.font.Font(None, 28)
-	player_image = load_player_image(welcome["player_image"])
-	try:
-		while running:
-			for event in pygame.event.get():
-				if event.type == pygame.QUIT or (event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE):
-					running = False
-			try:
-				send_message(connection, keyboard_state())
-			except OSError:
-				running = False
-			with state_lock:
-				state = latest_state.copy()
-			window.fill((30, 35, 50))
-			for raw_id, position in state.items():
-				rect = pygame.Rect(position[0], position[1], PLAYER_SIZE, PLAYER_SIZE)
-				window.blit(player_image, rect)
-				label = font.render(str(int(raw_id) + 1), True, (255, 255, 255))
-				window.blit(label, (rect.x + 20, rect.y + 14))
-			status = font.render(f"Player {player_id + 1} | ESC to disconnect", True, (220, 220, 220))
-			window.blit(status, (15, 15))
-			pygame.display.flip()
-			clock.tick(60)
-	finally:
-		connection.close()
-		pygame.quit()
-
-
-def main():
-	parser = argparse.ArgumentParser(description="A small LAN multiplayer Pygame demo")
-	mode = parser.add_mutually_exclusive_group(required=True)
-	mode.add_argument("--host", action="store_true", help="start the authoritative LAN server")
-	mode.add_argument("--connect", metavar="ADDRESS", help="connect to a host on the LAN")
-	parser.add_argument("--port", type=int, default=PORT, help=f"TCP port (default: {PORT})")
-	args = parser.parse_args()
-	if args.host:
-		host_game(args.port)
-	else:
-		client_game(args.connect, args.port)
-
-
-if __name__ == "__main__":
-	main()
