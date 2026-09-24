@@ -145,7 +145,7 @@ if errorlevel 1 (
 )
 
 endlocal
-exit /b 0
+exit
 
 :ensure_git
 call :refresh_tool_paths
