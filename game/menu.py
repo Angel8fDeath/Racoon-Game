@@ -158,4 +158,3 @@ def run_start_menu_window():
 
 		pygame.display.flip()
 		clock.tick(60)
-
