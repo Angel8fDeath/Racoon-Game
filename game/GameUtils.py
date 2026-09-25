@@ -22,8 +22,8 @@ DASH_BOOST_DURATION = 0.45
 DASH_COOLDOWN = 3.0
 FLASHLIGHT_RADIUS = 380
 FLASHLIGHT_HALF_SPREAD = math.radians(16)
-PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "BrownRaccoon" / "BrownRaccoon01.png"
-PLAYER_ANIMATION_PATHS = sorted(PLAYER_IMAGE_PATH.parent.glob("BrownRaccoon*.png"))
+PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "Magic Raccooon" / "MagicRaccoon01.png"
+PLAYER_ANIMATION_PATHS = sorted(PLAYER_IMAGE_PATH.parent.glob("MagicRaccoon*.png"))
 MAX_PLAYERS = 5
 PORT = 5000
 SHOW_HITBOXES = True
@@ -133,9 +133,12 @@ def load_player_images(image_data=None):
 		if visible_rect.width == 0 or visible_rect.height == 0:
 			continue
 		image = image.subsurface(visible_rect).copy()
-		scale = min((PLAYER_SIZE * 0.9) / image.get_width(), (PLAYER_SIZE * 0.9) / image.get_height())
-		image_size = (round(image.get_width() * scale), round(image.get_height() * scale))
-		prepared_images.append(pygame.transform.smoothscale(image, image_size))
+		image = pygame.transform.scale_by(image, 3)
+		scale = min(1.0, (PLAYER_SIZE * 0.9) / image.get_width(), (PLAYER_SIZE * 0.9) / image.get_height())
+		if scale < 1.0:
+			image_size = (round(image.get_width() * scale), round(image.get_height() * scale))
+			image = pygame.transform.smoothscale(image, image_size)
+		prepared_images.append(image)
 	return prepared_images
 
 

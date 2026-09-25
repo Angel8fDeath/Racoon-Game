@@ -41,7 +41,7 @@ def run_intro(window):
 
         window.fill((30, 35, 50))
 
-        if elapsed >= 2 and not sound_played:
+        if elapsed >= 1.5 and not sound_played:
             raccoon_sound.play()
             sound_played = True
 
@@ -55,7 +55,7 @@ def run_intro(window):
 
         if elapsed >= 6.5:
             window.blit(flashlight_image, (60, 500))
-            window.blit(raccoon_image, (400, 200))
+            window.blit(raccoon_image, (0, 0))
 
             pygame.draw.polygon(light, (255, 255, 255), [
                 (WIDTH * 0.1, HEIGHT * 1.2),
