@@ -24,9 +24,11 @@ from GameUtils import (
 	draw_flashlight,
 	draw_catch_indicator,
 	draw_stamina_bar,
+	draw_player,
+	draw_hitbox,
 	DASH_COOLDOWN,
 	keyboard_state,
-	load_player_image,
+	load_player_images,
 	send_message,
 	setup_window,
 )
@@ -52,6 +54,7 @@ def client_game(address, port, player_name="Player"):
 	latest_food_feedback = {}
 	latest_obstacles = []
 	dash_stamina = {}
+	previous_positions = {}
 	lobby_state = {"players": [0, player_id], "names": latest_names, "votes": {}, "selected_mode": "Survivors", "chaser_id": None}
 	state_lock = threading.Lock()
 	running = True
@@ -108,7 +111,8 @@ def client_game(address, port, player_name="Player"):
 	window = setup_window(f"LAN Game - Player {player_id + 1}")
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28)
-	player_image = load_player_image(welcome["player_image"])
+	player_font = pygame.font.Font(None, 20)
+	player_images = load_player_images(welcome["player_image"])
 	lobby = LobbyView(player_id, False)
 	try:
 		while running and not game_started:
@@ -199,10 +203,14 @@ def client_game(address, port, player_name="Player"):
 				draw_flashlight(window, chaser_rect.center, aims.get(str(game_chaser_id), [0, -1]))
 			for raw_id, position in state.items():
 				rect = pygame.Rect(position[0] - camera_x, position[1] - camera_y, PLAYER_SIZE, PLAYER_SIZE)
-				window.blit(player_image, rect)
+				position_key = tuple(position)
+				moving = previous_positions.get(raw_id) != position_key
+				previous_positions[raw_id] = position_key
+				draw_player(window, player_images, rect, now, moving)
+				draw_hitbox(window, rect)
 				label_color = RED_BRIGHT if int(raw_id) == game_chaser_id else (255, 255, 255)
-				label = font.render(names.get(raw_id, str(int(raw_id) + 1)), True, label_color)
-				window.blit(label, (rect.x + 20, rect.y + 14))
+				label = player_font.render(names.get(raw_id, str(int(raw_id) + 1)), True, label_color)
+				window.blit(label, (rect.centerx - label.get_width() // 2, rect.top - label.get_height() - 6))
 				if int(raw_id) != game_chaser_id and game_chaser_id is not None:
 					draw_catch_indicator(window, (rect.centerx, rect.top - 16), float(catch_progress.get(raw_id, 0.0)))
 				if int(raw_id) != game_chaser_id:

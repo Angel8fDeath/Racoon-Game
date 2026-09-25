@@ -28,6 +28,8 @@ from GameUtils import (
 	draw_nest,
 	draw_food_counter,
 	draw_food_action,
+	draw_player,
+	draw_hitbox,
 	generate_obstacles,
 	find_path,
 	draw_catch_indicator,
@@ -36,7 +38,7 @@ from GameUtils import (
 	dash_direction,
 	draw_stamina_bar,
 	is_inside_flashlight,
-	load_player_image,
+	load_player_images,
 	move_player,
 	send_message,
 	setup_window,
@@ -354,8 +356,10 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 	server.start()
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28) if window else None
-	player_image = load_player_image() if window else None
+	player_font = pygame.font.Font(None, 20) if window else None
+	player_images = load_player_images() if window else None
 	players = {0: pygame.Rect(240, WORLD_HEIGHT // 2, PLAYER_SIZE, PLAYER_SIZE)}
+	previous_positions = {}
 	server.catch_progress = {}
 	server.caught_players = set()
 	server.dash_cooldowns = {}
@@ -568,10 +572,13 @@ def host_game(port, debug_mode=False, player_name="HOST"):
 					draw_flashlight(window, chaser_screen.center, aims.get(str(chaser_id), [0, -1]))
 				for player_id, rect in players.items():
 					screen_rect = rect.move(-camera_x, -camera_y)
-					window.blit(player_image, screen_rect)
+					moving = previous_positions.get(player_id) != rect.topleft
+					previous_positions[player_id] = rect.topleft
+					draw_player(window, player_images, screen_rect, now, moving)
+					draw_hitbox(window, screen_rect)
 					label_color = (239, 98, 68) if player_id == lobby_state["chaser_id"] else (255, 255, 255)
-					label = font.render(names.get(str(player_id), str(player_id + 1)), True, label_color)
-					window.blit(label, (screen_rect.x + 20, screen_rect.y + 14))
+					label = player_font.render(names.get(str(player_id), str(player_id + 1)), True, label_color)
+					window.blit(label, (screen_rect.centerx - label.get_width() // 2, screen_rect.top - label.get_height() - 6))
 					if player_id != chaser_id and lobby_state["selected_mode"] == "Chase":
 						draw_catch_indicator(window, (screen_rect.centerx, screen_rect.top - 16), server.catch_progress.get(player_id, 0.0))
 					if player_id != chaser_id:

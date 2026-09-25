@@ -11,7 +11,7 @@ import pygame
 
 WIDTH, HEIGHT = 1200, 900
 WORLD_WIDTH, WORLD_HEIGHT = 4800, 3600
-PLAYER_SIZE = 58
+PLAYER_SIZE = 100
 NEST_RECT = pygame.Rect(180, WORLD_HEIGHT // 2 - 240, 420, 480)
 FOOD_ZONE_RECTS = [
 	pygame.Rect(WORLD_WIDTH - 620, 260 + index * 650, 360, 300)
@@ -22,9 +22,11 @@ DASH_BOOST_DURATION = 0.45
 DASH_COOLDOWN = 3.0
 FLASHLIGHT_RADIUS = 380
 FLASHLIGHT_HALF_SPREAD = math.radians(16)
-PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "RaccoonBASE.png"
+PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "BrownRaccoon" / "BrownRaccoon01.png"
+PLAYER_ANIMATION_PATHS = sorted(PLAYER_IMAGE_PATH.parent.glob("BrownRaccoon*.png"))
 MAX_PLAYERS = 5
 PORT = 5000
+SHOW_HITBOXES = True
 
 
 def generate_obstacles(seed, count=24):
@@ -116,13 +118,43 @@ def setup_window(title):
 	return window
 
 
-def load_player_image(image_data=None):
+def load_player_images(image_data=None):
+	images = []
 	if image_data:
 		image_source = io.BytesIO(base64.b64decode(image_data))
+		images.append(pygame.image.load(image_source).convert_alpha())
+	for image_path in PLAYER_ANIMATION_PATHS:
+		if image_data and image_path == PLAYER_IMAGE_PATH:
+			continue
+		images.append(pygame.image.load(str(image_path)).convert_alpha())
+	prepared_images = []
+	for image in images:
+		visible_rect = image.get_bounding_rect()
+		if visible_rect.width == 0 or visible_rect.height == 0:
+			continue
+		image = image.subsurface(visible_rect).copy()
+		scale = min((PLAYER_SIZE * 0.9) / image.get_width(), (PLAYER_SIZE * 0.9) / image.get_height())
+		image_size = (round(image.get_width() * scale), round(image.get_height() * scale))
+		prepared_images.append(pygame.transform.smoothscale(image, image_size))
+	return prepared_images
+
+
+def load_player_image(image_data=None):
+	return load_player_images(image_data)[0]
+
+
+def draw_player(window, images, hitbox, animation_time, moving=False):
+	if moving and len(images) > 1:
+		image = images[int(animation_time * 5 % len(images))]
 	else:
-		image_source = str(PLAYER_IMAGE_PATH)
-	image = pygame.image.load(image_source).convert_alpha()
-	return pygame.transform.smoothscale(image, (PLAYER_SIZE, PLAYER_SIZE))
+		image = images[0]
+	image_rect = image.get_rect(center=hitbox.center)
+	window.blit(image, image_rect)
+
+
+def draw_hitbox(window, hitbox):
+	if SHOW_HITBOXES:
+		pygame.draw.rect(window, (255, 40, 40), hitbox, 2)
 
 
 def keyboard_state():

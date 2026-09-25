@@ -9,6 +9,7 @@ from menu import run_start_menu_window
 
 
 INTRO_WIDTH, INTRO_HEIGHT = 1200, 900
+SKIP_INTRO = True
 
 
 def main():
@@ -23,14 +24,15 @@ def main():
 	elif args.connect:
 		client_game(args.connect, args.port)
 	else:
-		pygame.init()
-		intro_window = pygame.display.set_mode((INTRO_WIDTH, INTRO_HEIGHT))
-		pygame.display.set_caption("Raccoon Game Intro")
-		try:
-			if not run_intro(intro_window):
-				return
-		finally:
-			pygame.quit()
+		if not SKIP_INTRO:
+			pygame.init()
+			intro_window = pygame.display.set_mode((INTRO_WIDTH, INTRO_HEIGHT))
+			pygame.display.set_caption("Raccoon Game Intro")
+			try:
+				if not run_intro(intro_window):
+					return
+			finally:
+				pygame.quit()
 		run_start_menu_window()
 
 
