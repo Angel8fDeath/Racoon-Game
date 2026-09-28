@@ -17,9 +17,9 @@ FOOD_ZONE_RECTS = [
 	pygame.Rect(WORLD_WIDTH - 620, 260 + index * 650, 360, 300)
 	for index in range(5)
 ]
-DASH_BOOST_SPEED = 700
-DASH_BOOST_DURATION = 0.45
-DASH_COOLDOWN = 3.0
+DASH_BOOST_SPEED = 1400
+DASH_BOOST_DURATION = 0.8
+DASH_COOLDOWN = 2.0
 FLASHLIGHT_RADIUS = 380
 FLASHLIGHT_HALF_SPREAD = math.radians(16)
 PLAYER_IMAGE_PATH = Path(__file__).parent.parent / "images" / "Magic Raccooon" / "MagicRaccoon01.png"
