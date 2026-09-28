@@ -60,7 +60,7 @@ def launch_join(ip_value, port_value, player_name="Player"):
 		port = int(port_value or 5000)
 	except ValueError:
 		raise ValueError("Port must be a number.")
-	address = ip_value.strip() or "127.0.0.1"
+	address = ip_value.strip() or "192.168.110.156"
 	return client_game(address, port, player_name=player_name)
 
 
@@ -76,7 +76,7 @@ def _run_start_menu_window():
 
 	mode = "host"
 	name_text = "HOST"
-	ip_text = "127.0.0.1"
+	ip_text = "192.168.110.156"
 	port_text = "5000"
 	active_field = "name"
 	status_text = ""
@@ -107,19 +107,17 @@ def _run_start_menu_window():
 				if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
 					try:
 						if mode == "host":
-							pygame.quit()
 							result = launch_host(port_text, debug_mode, name_text)
 						else:
-							pygame.quit()
 							result = launch_join(ip_text, port_text, name_text)
 						if result == "menu":
 							return "menu"
 						return
-					except ValueError as exc:
+					except (ValueError, OSError) as exc:
 						status_text = str(exc)
 					continue
 				if active_field == "name":
-					name_text = handle_text_edit(name_text, event.key, event.unicode, max_length=20)
+					name_text = handle_text_edit(name_text, event.key, event.unicode, max_length=25)
 				elif mode == "join" and active_field == "ip":
 					ip_text = handle_text_edit(ip_text, event.key, event.unicode, max_length=32)
 				elif active_field == "port":
@@ -147,7 +145,6 @@ def _run_start_menu_window():
 					debug_mode = not debug_mode
 				if start_rect.collidepoint(mouse_pos):
 					try:
-						pygame.quit()
 						if mode == "host":
 							result = launch_host(port_text, debug_mode, name_text)
 						else:
@@ -155,7 +152,7 @@ def _run_start_menu_window():
 						if result == "menu":
 							return "menu"
 						return
-					except ValueError as exc:
+					except (ValueError, OSError) as exc:
 						status_text = str(exc)
 
 		screen.fill(BACKGROUND)
@@ -179,10 +176,9 @@ def _run_start_menu_window():
 
 		if status_text:
 			status_surface = small_font.render(status_text, True, ERROR_COLOR)
-			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 870))
-		else:
-			status_surface = small_font.render("ESC TO ABORT  //  TAB TO CYCLE INPUTS", True, MUTED)
-			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 870))
+			screen.blit(status_surface, (WINDOW_WIDTH / 2 - status_surface.get_width() / 2, 840))
+		hint_surface = small_font.render("ESC TO ABORT  //  TAB TO CYCLE INPUTS", True, MUTED)
+		screen.blit(hint_surface, (WINDOW_WIDTH / 2 - hint_surface.get_width() / 2, 875))
 
 		pygame.display.flip()
 		clock.tick(60)

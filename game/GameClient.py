@@ -35,12 +35,31 @@ from GameUtils import (
 
 
 def client_game(address, port, player_name="Player"):
-	connection = socket.create_connection((address, port))
-	reader = connection.makefile("r", encoding="utf-8")
-	welcome = json.loads(reader.readline())
-	player_id = welcome["player_id"]
+	connection = None
+	try:
+		connection = socket.create_connection((address, port), timeout=10)
+		reader = connection.makefile("r", encoding="utf-8")
+		welcome_line = reader.readline()
+		if not welcome_line:
+			raise ValueError("Host closed the connection before sending a welcome message.")
+		welcome = json.loads(welcome_line)
+		player_id = welcome["player_id"]
+		player_image = welcome["player_image"]
+		connection.settimeout(None)
+	except socket.timeout as exc:
+		if connection is not None:
+			connection.close()
+		raise ConnectionError(f"Connection to {address}:{port} timed out.") from exc
+	except (OSError, ValueError, KeyError, TypeError) as exc:
+		if connection is not None:
+			connection.close()
+		raise ConnectionError(f"Could not connect to host at {address}:{port}: {exc}") from exc
 	player_name = "".join(character for character in str(player_name) if character.isprintable()).strip()[:20] or "Player"
-	send_message(connection, {"type": "player_info", "name": player_name})
+	try:
+		send_message(connection, {"type": "player_info", "name": player_name})
+	except OSError as exc:
+		connection.close()
+		raise ConnectionError(f"Connection to host at {address}:{port} failed during setup.") from exc
 	latest_state = {}
 	latest_names = {str(player_id): player_name}
 	latest_aims = {}
@@ -64,7 +83,9 @@ def client_game(address, port, player_name="Player"):
 	last_stamina_update = time.monotonic()
 
 	def receive_states():
-		nonlocal running, latest_state, latest_names, latest_aims, latest_catch_progress, latest_timer, latest_delivered_food, latest_carried_food, latest_food_counts, latest_nest_food, latest_food_actions, latest_food_feedback, latest_obstacles, lobby_state, game_started, game_chaser_id, dash_stamina
+		nonlocal running, latest_state, latest_names, latest_aims, latest_catch_progress, latest_timer, \
+				latest_delivered_food, latest_carried_food, latest_food_counts, latest_nest_food, latest_food_actions, \
+				latest_food_feedback, latest_obstacles, lobby_state, game_started, game_chaser_id, dash_stamina
 		try:
 			for line in reader:
 				message = json.loads(line)
@@ -112,7 +133,7 @@ def client_game(address, port, player_name="Player"):
 	clock = pygame.time.Clock()
 	font = pygame.font.Font(None, 28)
 	player_font = pygame.font.Font(None, 20)
-	player_images = load_player_images(welcome["player_image"])
+	player_images = load_player_images(player_image)
 	lobby = LobbyView(player_id, False)
 	try:
 		while running and not game_started:
